@@ -1,18 +1,66 @@
-import random
+import os
+import json
 
-values = [random.randint(0, 1) for _ in range(100)]
+os.makedirs("experiments/inputs", exist_ok=True)
 
-# pack 8 bits per byte, pad last byte with 0s
-padded = values + [0] * (8 - len(values) % 8) % 8
-bytes_out = []
-for i in range(0, len(padded), 8):
-    byte = 0
-    for bit in padded[i:i+8]:
-        byte = (byte << 1) | bit
-    bytes_out.append(byte)
+def write_txt(filepath, values):
+    with open(filepath, "w") as f:
+        f.write("".join(str(v) for v in values))
 
-with open("sample.bin", "wb") as f:
-    f.write(bytearray(bytes_out))
+def count_occurrences(values, pattern):
+    count = 0
+    for i in range(len(values) - len(pattern) + 1):
+        if values[i:i+len(pattern)] == pattern:
+            count += 1
+    return count
 
-print(f"Generated sample.bin: {len(values)} bits packed into {len(bytes_out)} bytes")
-print("Values:", values)
+def find_occurrences(values, pattern):
+    positions = []
+    for i in range(len(values) - len(pattern) + 1):
+        if values[i:i+len(pattern)] == pattern:
+            positions.append(i)
+    return positions
+
+# --- Test cases ---
+test_cases = [
+    {
+        "name": "simple",
+        "values": [1, 0, 1, 1, 0, 0, 1, 0],
+        "queries": [[1, 0], [1, 1], [0, 0], [1]],
+    },
+    {
+        "name": "all_zeros",
+        "values": [0] * 16,
+        "queries": [[0], [0, 0], [1], [0, 0, 0]],
+    },
+    {
+        "name": "all_ones",
+        "values": [1] * 16,
+        "queries": [[1], [1, 1], [0], [1, 1, 1]],
+    },
+    {
+        "name": "alternating",
+        "values": [0, 1] * 16,
+        "queries": [[0, 1], [1, 0], [0, 0], [1, 1]],
+    },
+]
+
+expected = {}
+for tc in test_cases:
+    path = f"experiments/inputs/{tc['name']}.txt"
+    write_txt(path, tc["values"])
+    expected[tc["name"]] = {
+        "n_bits": len(tc["values"]),
+        "queries": []
+    }
+    for q in tc["queries"]:
+        expected[tc["name"]]["queries"].append({
+            "pattern": q,
+            "count": count_occurrences(tc["values"], q),
+            "positions": find_occurrences(tc["values"], q),
+        })
+    print(f"Generated {path} ({len(tc['values'])} bits)")
+
+with open("experiments/expected.json", "w") as f:
+    json.dump(expected, f, indent=2)
+print("Wrote experiments/expected.json")

@@ -1,41 +1,45 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "suffix_array.h"
+#include "fm_index.h"
 
-// comparison struct for sorting
-typedef struct {
-    int index;
-    int rank[2];
-} SuffixRank;
+#include <algorithm>
+#include <vector>
 
-int cmp_suffix_rank(const void *a, const void *b) {
-    SuffixRank *sa = (SuffixRank *)a;
-    SuffixRank *sb = (SuffixRank *)b;
-    if (sa->rank[0] != sb->rank[0]) return sa->rank[0] - sb->rank[0];
-    return sa->rank[1] - sb->rank[1];
+struct SuffixRank {
+    uint64_t index;
+    int64_t  rank[2];
+};
+
+// returns -1 for sentinel position n, otherwise the bit at position i
+// n is idx.n (includes sentinel), sentinel is at position n-1
+static inline int64_t get_bit_or_sentinel(const std::vector<uint8_t> &s, uint64_t i, uint64_t n) {
+    if (i >= n - 1) return -1;
+    return get_bit(s, i);
 }
 
-// prefix doubling - O(n log^2 n) algorithm to build suffix array
-int *build_suffix_array(const char *s, int n) {
-    SuffixRank *sr = (SuffixRank *)malloc(n * sizeof(SuffixRank));
-    int *sa = (int *)malloc(n * sizeof(int));
-    int *rank = (int *)malloc(n * sizeof(int));
-    int *tmp = (int *)malloc(n * sizeof(int));
+void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s) {
+    uint64_t n = idx.n; // includes sentinel
+    idx.suffix_array.resize(n);
 
-    // initial ranking by first character
-    for (int i = 0; i < n; i++) {
-        sr[i].index = i;
-        sr[i].rank[0] = s[i];
-        sr[i].rank[1] = (i + 1 < n) ? s[i + 1] : -1;
+    if (n == 0) return;
+
+    std::vector<SuffixRank> sr(n);
+    for (uint64_t i = 0; i < n; i++) {
+        sr[i].index   = i;
+        sr[i].rank[0] = get_bit_or_sentinel(s, i,     n);
+        sr[i].rank[1] = get_bit_or_sentinel(s, i + 1, n);
     }
 
-    qsort(sr, n, sizeof(SuffixRank), cmp_suffix_rank);
+    auto cmp = [](const SuffixRank &a, const SuffixRank &b) {
+        if (a.rank[0] != b.rank[0]) return a.rank[0] < b.rank[0];
+        return a.rank[1] < b.rank[1];
+    };
 
-    for (int k = 2; k < n; k *= 2) {
-        // assign ranks from sorted order
+    std::sort(sr.begin(), sr.end(), cmp);
+
+    std::vector<int64_t> rank(n);
+
+    for (uint64_t k = 2; k < n; k *= 2) {
         rank[sr[0].index] = 0;
-        for (int i = 1; i < n; i++) {
+        for (uint64_t i = 1; i < n; i++) {
             rank[sr[i].index] = rank[sr[i-1].index];
             if (sr[i].rank[0] != sr[i-1].rank[0] ||
                 sr[i].rank[1] != sr[i-1].rank[1]) {
@@ -43,22 +47,24 @@ int *build_suffix_array(const char *s, int n) {
             }
         }
 
-        // early exit if all ranks unique
-        if (rank[sr[n-1].index] == n - 1) break;
+        if (rank[sr[n-1].index] == (int64_t)(n - 1)) break;
 
-        // update ranks for next iteration
-        for (int i = 0; i < n; i++) {
+        for (uint64_t i = 0; i < n; i++) {
+            uint64_t next = sr[i].index + k;
             sr[i].rank[0] = rank[sr[i].index];
-            sr[i].rank[1] = (sr[i].index + k < n) ? rank[sr[i].index + k] : -1;
+            sr[i].rank[1] = (next < n - 1) ? rank[next] : -1;
         }
 
-        qsort(sr, n, sizeof(SuffixRank), cmp_suffix_rank);
+        std::sort(sr.begin(), sr.end(), cmp);
     }
 
-    for (int i = 0; i < n; i++) sa[i] = sr[i].index;
+    for (uint64_t i = 0; i < n; i++) idx.suffix_array[i] = sr[i].index;
 
-    free(sr);
-    free(rank);
-    free(tmp);
-    return sa;
+    // c_table[c] = # of suffixes in sorted order before first suffix starting with c
+    // sorted order: $ < 0 < 1
+    uint64_t zeros = 0;
+    for (uint64_t i = 0; i < n; i++) if (get_bit_or_sentinel(s, i, n) == 0) zeros++;
+    idx.c_table[0] = 1;          // 1 sentinel before all 0s
+    idx.c_table[1] = 1 + zeros;  // sentinel + all 0s before all 1s
+    idx.c_table[2] = 0;
 }
