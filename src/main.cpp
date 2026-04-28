@@ -99,7 +99,8 @@ void print_usage(const char *prog) {
     std::cerr << "Usage:\n"
               << "  " << prog << " [--jacobson] [--ssa <k>] --input <file>                        (build only)\n"
               << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --count <p1> <p2> ...  (build + count queries)\n"
-              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --locate <p1> <p2> ... (build + locate queries)\n"
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --extract <start> <end> (extract substring [start,end))\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -162,9 +163,21 @@ int main(int argc, char *argv[]) {
         }
 
         std::string query_mode = argv[arg_offset + 2];
-        if (query_mode != "--count" && query_mode != "--locate") {
+        if (query_mode != "--count" && query_mode != "--locate" && query_mode != "--extract") {
             print_usage(argv[0]);
             return 1;
+        }
+
+        if (query_mode == "--extract") {
+            if (argc != arg_offset + 5) {
+                print_usage(argv[0]);
+                return 1;
+            }
+            uint64_t start = std::stoull(argv[arg_offset + 3]);
+            uint64_t end = std::stoull(argv[arg_offset + 4]);
+            std::string extracted = extract_substring(idx, start, end);
+            std::cout << "extract=" << extracted << " start=" << start << " end=" << end << "\n";
+            return 0;
         }
 
         for (int i = arg_offset + 3; i < argc; i++) {

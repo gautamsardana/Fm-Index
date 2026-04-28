@@ -51,6 +51,9 @@ uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, ui
 // time: O(p + occ)  space: O(64*occ bits) — backward search + SA lookup per occurrence
 std::vector<uint64_t> query_locate(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
 
+// time: O(n + len)  space: O(n) — extract substring [start, end) using SA; SSA uses LF with sampled SA
+std::string extract_substring(const FmIndex &idx, uint64_t start, uint64_t end);
+
 void store_index(const FmIndex &idx, const std::string &filepath);
 
 FmIndex load_index(const std::string &filepath);

@@ -87,6 +87,54 @@ def check(label, text, pattern, expected_count, expected_positions):
     if run_jacobson:
         check_one(label, text, pattern, expected_count, expected_positions, jacobson=True)
 
+def run_extract(text, start, end, jacobson=False):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        f.write(text)
+        fname = f.name
+    try:
+        cmd = [BINARY]
+        if jacobson:
+            cmd += ["--jacobson"]
+        if SSA_RATE:
+            cmd += ["--ssa", str(SSA_RATE)]
+        cmd += ["--input", fname, "--extract", str(start), str(end)]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        if result.returncode != 0:
+            return None
+        output = result.stdout.strip()
+        if "extract=" not in output:
+            return None
+        after = output.split("extract=")[1]
+        if " start=" in after:
+            return after.split(" start=")[0]
+        return after.split()[0] if after.strip() else ""
+    finally:
+        os.unlink(fname)
+
+def check_extract(label, text, start, end):
+    global passed, failed
+    if start > end or end > len(text):
+        return
+    expected = text[start:end]
+    if run_naive:
+        actual = run_extract(text, start, end, jacobson=False)
+        if actual == expected:
+            print(f"PASS [extract:{label}] T={text} start={start} end={end} extract={actual}")
+            passed += 1
+        else:
+            print(f"FAIL [extract:{label}] T={text} start={start} end={end}")
+            print(f"       extract: expected={expected} got={actual}")
+            failed += 1
+    if run_jacobson:
+        actual = run_extract(text, start, end, jacobson=True)
+        if actual == expected:
+            print(f"PASS [extract:{label}] [jacobson] T={text} start={start} end={end} extract={actual}")
+            passed += 1
+        else:
+            print(f"FAIL [extract:{label}] [jacobson] T={text} start={start} end={end}")
+            print(f"       extract: expected={expected} got={actual}")
+            failed += 1
+
 # --- Table tests ---
 cases = [
     ("single_match_0",      "0",         "0",        1, [0]),
@@ -159,10 +207,69 @@ cases = [
     ("start_match",         "100",       "10",       1, [0]),
     ("isolated_1",          "0001000",   "1",        1, [3]),
     ("suffix_match",        "00101",     "101",      1, [2]),
+    ("double_boundary",     "01000010", "010",     2, [0,5]),
+    ("double_boundary_2",   "01000010", "0100",    1, [0]),
+    ("allzero_long",        "0000000000", "0000",  7, [0,1,2,3,4,5,6]),
+    ("allone_long",         "1111111111", "1111",  7, [0,1,2,3,4,5,6]),
+    ("rare_one",            "000010000", "1",     1, [4]),
+    ("rare_one_absent",     "000010000", "11",    0, []),
 ]
 
 for args in cases:
     check(*args)
+
+# --- Extract tests ---
+extract_cases = [
+    ("full", "010101", 0, 6),
+    ("prefix", "010101", 0, 3),
+    ("suffix", "010101", 3, 6),
+    ("middle", "011010011001", 2, 7),
+    ("single", "1111", 2, 3),
+    ("empty", "10101", 2, 2),
+    ("zero_start", "000111000", 0, 4),
+    ("one_run", "111000111", 3, 6),
+    ("end_boundary", "010011", 4, 6),
+    ("full_long", "011010011001", 0, 12),
+    ("tail_one", "100000", 5, 6),
+    ("head_one", "100000", 0, 1),
+    ("alt_slice", "0101010101", 1, 9),
+    ("runs_slice", "000011110000", 3, 9),
+    ("end_full", "0010110", 0, 7),
+    ("end_last", "0010110", 6, 7),
+    ("start_last", "0010110", 5, 6),
+    ("middle_long", "010011001110", 4, 10),
+    ("alt_small", "0101", 1, 3),
+]
+
+random.seed(7)
+for i in range(10):
+    n = random.randint(6, 20)
+    text = "".join(random.choice("01") for _ in range(n))
+    start = random.randint(0, n - 1)
+    end = random.randint(start, n)
+    extract_cases.append((f"rand_{i}", text, start, end))
+
+for label, text, start, end in extract_cases:
+    check_extract(label, text, start, end)
+
+if SSA_RATE:
+    ssa_text = "010101001111000010101001111000"
+    ssa_extracts = [
+        ("ssa_full", ssa_text, 0, len(ssa_text)),
+        ("ssa_mid", ssa_text, 5, 20),
+        ("ssa_tail", ssa_text, len(ssa_text) - 8, len(ssa_text)),
+    ]
+    for label, text, start, end in ssa_extracts:
+        check_extract(label, text, start, end)
+    ssa_patterns = [
+        ("ssa_pat_0", ssa_text, "0101"),
+        ("ssa_pat_1", ssa_text, "1111"),
+        ("ssa_pat_2", ssa_text, "00001"),
+    ]
+    for label, text, pattern in ssa_patterns:
+        expected_count = brute_count(text, pattern)
+        expected_positions = brute_locate(text, pattern)
+        check(label, text, pattern, expected_count, expected_positions)
 
 # --- Fuzz tests ---
 print("\n--- Fuzz tests ---")
