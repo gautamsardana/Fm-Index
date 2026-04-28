@@ -1,10 +1,8 @@
-CXX     = g++
+CXX      = g++
 CXXFLAGS = -Wall -O2 -Iinclude -std=c++17
 BUILDDIR = build
 
-SRC     = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/fm_index.cpp src/main.cpp
-
-# --- Main binary ---
+SRC = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/fm_index.cpp src/main.cpp
 
 all: $(BUILDDIR)/fm_index
 
@@ -14,19 +12,17 @@ $(BUILDDIR)/fm_index: $(SRC) | $(BUILDDIR)
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
 
-
-# --- Tests ---
-
-generate_tests:
-	python3 experiments/generate_experiment_binaries.py
-
-run_tests: generate_tests | $(BUILDDIR)
+run_correctness_tests: | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -DDEBUG $(SRC) -o $(BUILDDIR)/fm_index
-	python3 experiments/run_experiments.py
+	python3 experiments/run_correctness_tests.py
 
-# --- Cleanup ---
+run_performance_tests: $(BUILDDIR)/fm_index
+	python3 experiments/run_performance_tests.py
+
+run_dataset_evaluations: $(BUILDDIR)/fm_index
+	python3 experiments/run_dataset_evaluations.py
 
 clean:
 	rm -rf $(BUILDDIR)
 
-.PHONY: all generate_tests run_tests clean
+.PHONY: all run_correctness_tests run_performance_tests run_dataset_evaluations clean

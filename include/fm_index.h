@@ -15,12 +15,14 @@ inline void set_bit(std::vector<uint8_t> &v, uint64_t i, uint8_t bit) {
 }
 
 struct FmIndex {
+    uint64_t n = 0;                      // input length in bits + 1 (sentinel)
+    uint64_t sentinel_row = 0;           // row in BWT where $ (sentinel) appears
+
     std::vector<uint8_t> bwt;            // BWT of input, bit-packed, size (n+7)/8
     std::vector<uint64_t> suffix_array;  // SA of input+sentinel, size n (includes sentinel)
-    uint64_t n = 0;                      // input length in bits + 1 (sentinel)
-    uint64_t c_table[3];                 // c_table[c] = # of suffixes before first suffix starting with c
     std::vector<uint64_t> rank_table;    // rank_table[i] = # of 1s in bwt[0..i), size n+1
-    uint64_t sentinel_row = 0;           // row in BWT where $ (sentinel) appears
+    uint64_t c_table[3];                 // c_table[c] = # of suffixes before first suffix starting with c
+    
 };
 
 // time: O(n log^2 n)  space: O(64n bits) — prefix doubling sort over n+1 suffixes
