@@ -78,9 +78,11 @@ static PerfSnapshot take_snapshot() {
 }
 #endif
 
-void build_index(FmIndex &idx, const std::string &input_file) {
+void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson = false) {
     auto [s, n_bits] = read_input(input_file);
     idx.n = n_bits + 1; // +1 for sentinel
+    idx.use_jacobson = use_jacobson;
+
     build_suffix_array(idx, s);
     build_bwt(idx, s);
     build_rank(idx);
@@ -89,9 +91,9 @@ void build_index(FmIndex &idx, const std::string &input_file) {
 
 void print_usage(const char *prog) {
     std::cerr << "Usage:\n"
-              << "  " << prog << " --input <file>                        (build only)\n"
-              << "  " << prog << " --input <file> --count <p1> <p2> ...  (build + count queries)\n"
-              << "  " << prog << " --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
+              << "  " << prog << " [--jacobson] --input <file>                        (build only)\n"
+              << "  " << prog << " [--jacobson] --input <file> --count <p1> <p2> ...  (build + count queries)\n"
+              << "  " << prog << " [--jacobson] --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -100,37 +102,49 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Check for --jacobson flag
+    bool use_jacobson = false;
+    int arg_offset = 1;
+    if (std::string(argv[1]) == "--jacobson") {
+        use_jacobson = true;
+        arg_offset = 2;
+        if (argc < 4) {
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+
     try {
-        if (std::string(argv[1]) != "--input") {
+        if (std::string(argv[arg_offset]) != "--input") {
             print_usage(argv[0]);
             return 1;
         }
 
-        std::string input_file = argv[2];
+        std::string input_file = argv[arg_offset + 1];
         FmIndex idx;
 
 #ifdef PERF
         auto s0 = take_snapshot();
-        build_index(idx, input_file);
+        build_index(idx, input_file, use_jacobson);
         auto s1 = take_snapshot();
         std::cout << "perf build: cpu_ms=" << (s1.cpu_ms - s0.cpu_ms)
                   << " peak_rss_kb=" << s1.peak_rss_kb << "\n";
 #else
-        build_index(idx, input_file);
+        build_index(idx, input_file, use_jacobson);
 #endif
 
-        if (argc == 3) {
+        if (argc == arg_offset + 2) {
             std::cout << "build: n=" << (idx.n - 1) << " bits\n";
             return 0;
         }
 
-        std::string query_mode = argv[3];
+        std::string query_mode = argv[arg_offset + 2];
         if (query_mode != "--count" && query_mode != "--locate") {
             print_usage(argv[0]);
             return 1;
         }
 
-        for (int i = 4; i < argc; i++) {
+        for (int i = arg_offset + 3; i < argc; i++) {
             auto [pattern, pattern_len] = parse_pattern(argv[i]);
             if (query_mode == "--count") {
 #ifdef PERF

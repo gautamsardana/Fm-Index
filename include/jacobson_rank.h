@@ -14,16 +14,7 @@ struct JacobsonRank {
   uint8_t bits_per_relative_rank = 0; // log2((log2(n))^2) = 2*log2(log2(n))
 };
 
-inline uint8_t get_bit(const std::vector<uint8_t> &v, uint64_t i) {
-  return (v[i / 8] >> (7 - (i % 8))) & 1;
-}
-
-inline void set_bit(std::vector<uint8_t> &v, uint64_t i, uint8_t bit) {
-  if (bit)
-    v[i / 8] |= (1 << (7 - (i % 8)));
-  else
-    v[i / 8] &= ~(1 << (7 - (i % 8)));
-}
+// Note: get_bit and set_bit are defined in fm_index.h
 
 uint64_t get_bits(const std::vector<uint8_t> &v, uint64_t pos, uint64_t width);
 
