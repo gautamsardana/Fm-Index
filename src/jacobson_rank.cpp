@@ -1,3 +1,4 @@
+#include "fm_index.h"
 #include "jacobson_rank.h"
 #include <cmath>
 

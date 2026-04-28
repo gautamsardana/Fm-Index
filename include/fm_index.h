@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "jacobson_rank.h"
 
 inline uint8_t get_bit(const std::vector<uint8_t> &v, uint64_t i) {
     return (v[i / 8] >> (7 - (i % 8))) & 1;
@@ -22,7 +23,9 @@ struct FmIndex {
     std::vector<uint64_t> suffix_array;  // SA of input+sentinel, size n (includes sentinel)
     std::vector<uint64_t> rank_table;    // rank_table[i] = # of 1s in bwt[0..i), size n+1
     uint64_t c_table[3];                 // c_table[c] = # of suffixes before first suffix starting with c
-    
+
+    JacobsonRank jacobson_rank;          // Jacobson rank structure for O(1) rank with O(n/log n) space
+    bool use_jacobson = false;           // Flag to control which rank method to use
 };
 
 // time: O(n log^2 n)  space: O(64n bits) — prefix doubling sort over n+1 suffixes
