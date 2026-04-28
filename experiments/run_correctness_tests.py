@@ -6,6 +6,10 @@ import tempfile
 
 BINARY = "./build/fm_index"
 
+# --jacobson: run only jacobson variant; default: run both
+run_jacobson = "--jacobson" in sys.argv
+run_naive    = "--jacobson" not in sys.argv
+
 passed = 0
 failed = 0
 
@@ -15,15 +19,16 @@ def parse_output(output):
     positions = sorted(int(p) for p in pos_str.split() if p)
     return count, positions
 
-def run_query(text, pattern):
+def run_query(text, pattern, jacobson=False):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
         f.write(text)
         fname = f.name
     try:
-        result = subprocess.run(
-            [BINARY, "--input", fname, "--locate", pattern],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-        )
+        cmd = [BINARY]
+        if jacobson:
+            cmd += ["--jacobson"]
+        cmd += ["--input", fname, "--locate", pattern]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         if result.returncode != 0:
             return None, None
         return parse_output(result.stdout.strip())
@@ -44,28 +49,33 @@ def brute_locate(text, pattern):
             positions.append(i)
     return sorted(positions)
 
-def check(label, text, pattern, expected_count, expected_positions):
+def check_one(label, text, pattern, expected_count, expected_positions, jacobson=False):
     global passed, failed
-    if not text:
-        return  # skip empty text (unsupported)
-    if len(pattern) == 0:
-        return  # skip empty pattern (unsupported)
-    count, positions = run_query(text, pattern)
+    suffix = " [jacobson]" if jacobson else ""
+    count, positions = run_query(text, pattern, jacobson=jacobson)
     if count is None:
-        print(f"FAIL [{label}] binary error")
+        print(f"FAIL [{label}]{suffix} binary error")
         failed += 1
         return
     ok = count == expected_count and positions == sorted(expected_positions)
     if ok:
-        print(f"PASS [{label}] T={text} P={pattern} count={count}")
+        print(f"PASS [{label}]{suffix} T={text} P={pattern} count={count}")
         passed += 1
     else:
-        print(f"FAIL [{label}] T={text} P={pattern}")
+        print(f"FAIL [{label}]{suffix} T={text} P={pattern}")
         if count != expected_count:
             print(f"       count: expected={expected_count} got={count}")
         if positions != sorted(expected_positions):
             print(f"       positions: expected={sorted(expected_positions)} got={positions}")
         failed += 1
+
+def check(label, text, pattern, expected_count, expected_positions):
+    if not text or len(pattern) == 0:
+        return
+    if run_naive:
+        check_one(label, text, pattern, expected_count, expected_positions, jacobson=False)
+    if run_jacobson:
+        check_one(label, text, pattern, expected_count, expected_positions, jacobson=True)
 
 # --- Table tests ---
 cases = [
@@ -159,8 +169,7 @@ for i in range(100):
 # --- Bin file test ---
 print("\n--- Bin file test ---")
 
-def run_query_bin(bits, pattern_str):
-    # pack bits into bytes MSB first
+def run_query_bin(bits, pattern_str, jacobson=False):
     padded = bits + [0] * ((8 - len(bits) % 8) % 8)
     packed = bytearray()
     for i in range(0, len(padded), 8):
@@ -172,26 +181,28 @@ def run_query_bin(bits, pattern_str):
         f.write(packed)
         fname = f.name
     try:
-        result = subprocess.run(
-            [BINARY, "--input", fname, "--locate", pattern_str],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-        )
+        cmd = [BINARY]
+        if jacobson:
+            cmd += ["--jacobson"]
+        cmd += ["--input", fname, "--locate", pattern_str]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         if result.returncode != 0:
             return None, None
         return parse_output(result.stdout.strip())
     finally:
         os.unlink(fname)
 
-# test: 01010101 (8 bits, one full byte), pattern=01, expected count=4, positions=[0,2,4,6]
 bits = [0,1,0,1,0,1,0,1]
-count, positions = run_query_bin(bits, "01")
 expected_count, expected_positions = 4, [0,2,4,6]
-if count == expected_count and positions == expected_positions:
-    print(f"PASS [bin_input] count={count} positions={positions}")
-    passed += 1
-else:
-    print(f"FAIL [bin_input] expected count={expected_count} positions={expected_positions} got count={count} positions={positions}")
-    failed += 1
+for jacobson in ([True] if run_jacobson else [False]):
+    suffix = " [jacobson]" if jacobson else ""
+    count, positions = run_query_bin(bits, "01", jacobson=jacobson)
+    if count == expected_count and positions == expected_positions:
+        print(f"PASS [bin_input]{suffix} count={count} positions={positions}")
+        passed += 1
+    else:
+        print(f"FAIL [bin_input]{suffix} expected count={expected_count} positions={expected_positions} got count={count} positions={positions}")
+        failed += 1
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(0 if failed == 0 else 1)

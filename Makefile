@@ -14,9 +14,10 @@ $(BUILDDIR):
 
 run_correctness_tests: | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -DDEBUG $(SRC) -o $(BUILDDIR)/fm_index
-	python3 experiments/run_correctness_tests.py
+	python3 experiments/run_correctness_tests.py $(if $(JACOBSON),--jacobson)
 
-run_performance_tests: $(BUILDDIR)/fm_index
+run_performance_tests: | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -DPERF $(SRC) -o $(BUILDDIR)/fm_index
 	python3 experiments/run_performance_tests.py
 
 run_dataset_evaluations: $(BUILDDIR)/fm_index
