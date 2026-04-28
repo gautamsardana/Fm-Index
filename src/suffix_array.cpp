@@ -18,10 +18,10 @@ int cmp_suffix_rank(const void *a, const void *b) {
 
 // prefix doubling - O(n log^2 n) algorithm to build suffix array
 int *build_suffix_array(const char *s, int n) {
-    SuffixRank *sr = malloc(n * sizeof(SuffixRank));
-    int *sa = malloc(n * sizeof(int));
-    int *rank = malloc(n * sizeof(int));
-    int *tmp = malloc(n * sizeof(int));
+    SuffixRank *sr = (SuffixRank *)malloc(n * sizeof(SuffixRank));
+    int *sa = (int *)malloc(n * sizeof(int));
+    int *rank = (int *)malloc(n * sizeof(int));
+    int *tmp = (int *)malloc(n * sizeof(int));
 
     // initial ranking by first character
     for (int i = 0; i < n; i++) {

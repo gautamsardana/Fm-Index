@@ -2,7 +2,7 @@ CXX     = g++
 CXXFLAGS = -Wall -O2 -Iinclude -std=c++17
 BUILDDIR = build
 
-SRC     = src/suffix_array.cpp src/main.cpp
+SRC     = src/suffix_array.cpp src/fm_index.cpp src/main.cpp
 
 # --- Main binary ---
 

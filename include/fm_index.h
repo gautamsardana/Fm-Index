@@ -7,6 +7,8 @@
 
 struct FmIndex {
     std::vector<uint8_t> bwt;
+    std::vector<uint64_t> suffix_array;
+    uint64_t n = 0;
     uint64_t c_table[3];                 // C[c] = # of chars in bwt less than c (binary alphabet: 0, 1, $)
     // TODO: rank
     // TODO: sparse suffix array
