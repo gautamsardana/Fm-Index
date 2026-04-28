@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import random
 import sys
@@ -5,6 +6,13 @@ import os
 import tempfile
 
 BINARY = "./build/fm_index"
+
+parser = argparse.ArgumentParser(description="Run FM-index correctness tests")
+parser.add_argument("--ssa", type=int, default=int(os.environ.get("SSA_RATE", "0")),
+                    help="Enable sparse suffix array with sampling rate k (k>=2)")
+args, _ = parser.parse_known_args()
+
+SSA_RATE = args.ssa if args.ssa and args.ssa > 1 else 0
 
 passed = 0
 failed = 0
@@ -20,8 +28,13 @@ def run_query(text, pattern):
         f.write(text)
         fname = f.name
     try:
+        cmd = [BINARY]
+        if SSA_RATE:
+            cmd += ["--ssa", str(SSA_RATE)]
+        cmd += ["--input", fname, "--locate", pattern]
+
         result = subprocess.run(
-            [BINARY, "--input", fname, "--locate", pattern],
+            cmd,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
         )
         if result.returncode != 0:
@@ -172,8 +185,13 @@ def run_query_bin(bits, pattern_str):
         f.write(packed)
         fname = f.name
     try:
+        cmd = [BINARY]
+        if SSA_RATE:
+            cmd += ["--ssa", str(SSA_RATE)]
+        cmd += ["--input", fname, "--locate", pattern_str]
+
         result = subprocess.run(
-            [BINARY, "--input", fname, "--locate", pattern_str],
+            cmd,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
         )
         if result.returncode != 0:

@@ -61,22 +61,28 @@ std::pair<std::vector<uint8_t>, uint64_t> parse_pattern(const std::string &s) {
     return {packed, n_bits};
 }
 
-void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson = false) {
+void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson = false,
+                 bool use_sparse_sa = false, uint64_t sa_sampling_rate = 1) {
     auto [s, n_bits] = read_input(input_file);
     idx.n = n_bits + 1; // +1 for sentinel
     idx.use_jacobson = use_jacobson;
+    idx.use_sparse_sa = use_sparse_sa;
+    idx.sa_sampling_rate = sa_sampling_rate;
 
     build_suffix_array(idx, s);
     build_bwt(idx, s);
     build_rank(idx);
+    if (idx.use_sparse_sa) {
+        sample_suffix_array(idx, idx.sa_sampling_rate);
+    }
     debug_print(idx);
 }
 
 void print_usage(const char *prog) {
     std::cerr << "Usage:\n"
-              << "  " << prog << " [--jacobson] --input <file>                        (build only)\n"
-              << "  " << prog << " [--jacobson] --input <file> --count <p1> <p2> ...  (build + count queries)\n"
-              << "  " << prog << " [--jacobson] --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file>                        (build only)\n"
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --count <p1> <p2> ...  (build + count queries)\n"
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -85,19 +91,36 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Check for --jacobson flag
+    // Parse optional flags
     bool use_jacobson = false;
+    bool use_sparse_sa = false;
+    uint64_t sa_sampling_rate = 1;
     int arg_offset = 1;
-    if (std::string(argv[1]) == "--jacobson") {
-        use_jacobson = true;
-        arg_offset = 2;
-        if (argc < 4) {
-            print_usage(argv[0]);
-            return 1;
+    while (arg_offset < argc && std::string(argv[arg_offset]).rfind("--", 0) == 0) {
+        std::string flag = argv[arg_offset];
+        if (flag == "--jacobson") {
+            use_jacobson = true;
+            arg_offset++;
+        } else if (flag == "--ssa") {
+            if (arg_offset + 1 >= argc) {
+                print_usage(argv[0]);
+                return 1;
+            }
+            use_sparse_sa = true;
+            sa_sampling_rate = std::stoull(argv[arg_offset + 1]);
+            if (sa_sampling_rate == 0) {
+                throw std::runtime_error("--ssa sampling rate must be >= 1");
+            }
+            arg_offset += 2;
+        } else {
+            break;
         }
     }
 
-    std::string mode = argv[arg_offset];
+    if (arg_offset >= argc) {
+        print_usage(argv[0]);
+        return 1;
+    }
 
     try {
         if (std::string(argv[arg_offset]) != "--input") {
@@ -107,7 +130,7 @@ int main(int argc, char *argv[]) {
 
         std::string input_file = argv[arg_offset + 1];
         FmIndex idx;
-        build_index(idx, input_file, use_jacobson);
+    build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
 
         if (argc == arg_offset + 2) {
             // build only

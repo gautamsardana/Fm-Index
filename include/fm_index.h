@@ -26,10 +26,15 @@ struct FmIndex {
 
     JacobsonRank jacobson_rank;          // Jacobson rank structure for O(1) rank with O(n/log n) space
     bool use_jacobson = false;           // Flag to control which rank method to use
+    bool use_sparse_sa = false;          // Whether suffix_array is stored as a sparse sample
+    uint64_t sa_sampling_rate = 1;       // Keep every k-th suffix array entry when sparse
 };
 
 // time: O(n log^2 n)  space: O(64n bits) — prefix doubling sort over n+1 suffixes
 void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s);
+
+// time: O(n)  space: O(n/k) — keep every k-th suffix array entry in idx.suffix_array
+void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate);
 
 // time: O(n)  space: O(n bits) — single pass over SA, BWT stored bit-packed
 void build_bwt(FmIndex &idx, const std::vector<uint8_t> &s);
