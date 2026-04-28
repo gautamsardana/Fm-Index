@@ -23,3 +23,5 @@ dist/
 # Data / misc
 *.txt
 *.json
+
+datasets
