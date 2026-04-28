@@ -9,22 +9,24 @@ BINARY = "./build/fm_index"
 passed = 0
 failed = 0
 
+def parse_output(output):
+    count = int(output.split("count=")[1].split()[0])
+    pos_str = output.split("positions=")[1].split("pattern=")[0].strip()
+    positions = sorted(int(p) for p in pos_str.split() if p)
+    return count, positions
+
 def run_query(text, pattern):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
         f.write(text)
         fname = f.name
     try:
         result = subprocess.run(
-            [BINARY, "--convert-and-query", fname, pattern],
+            [BINARY, "--input", fname, "--locate", pattern],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
         )
         if result.returncode != 0:
             return None, None
-        output = result.stdout.strip()
-        count = int(output.split("count=")[1].split()[0])
-        pos_str = output.split("positions=")[1].strip()
-        positions = sorted(int(p) for p in pos_str.split() if p)
-        return count, positions
+        return parse_output(result.stdout.strip())
     finally:
         os.unlink(fname)
 
@@ -132,7 +134,7 @@ cases = [
     ("random_no111",        "011010011001", "111",   0, []),
     ("random_full",         "011010011001", "011010011001", 1, [0]),
     # extra edge cases
-    ("nowrap_101",          "0101",      "101",      0, []),
+    ("nowrap_101",          "0101",      "101",      1, [1]),
     ("end_match",           "001",       "01",       1, [1]),
     ("start_match",         "100",       "10",       1, [0]),
     ("isolated_1",          "0001000",   "1",        1, [3]),
@@ -153,6 +155,43 @@ for i in range(100):
     expected_count = brute_count(text, pattern)
     expected_positions = brute_locate(text, pattern)
     check(f"fuzz_{i}", text, pattern, expected_count, expected_positions)
+
+# --- Bin file test ---
+print("\n--- Bin file test ---")
+
+def run_query_bin(bits, pattern_str):
+    # pack bits into bytes MSB first
+    padded = bits + [0] * ((8 - len(bits) % 8) % 8)
+    packed = bytearray()
+    for i in range(0, len(padded), 8):
+        byte = 0
+        for b in padded[i:i+8]:
+            byte = (byte << 1) | b
+        packed.append(byte)
+    with tempfile.NamedTemporaryFile(suffix='.bin', delete=False) as f:
+        f.write(packed)
+        fname = f.name
+    try:
+        result = subprocess.run(
+            [BINARY, "--input", fname, "--locate", pattern_str],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+        )
+        if result.returncode != 0:
+            return None, None
+        return parse_output(result.stdout.strip())
+    finally:
+        os.unlink(fname)
+
+# test: 01010101 (8 bits, one full byte), pattern=01, expected count=4, positions=[0,2,4,6]
+bits = [0,1,0,1,0,1,0,1]
+count, positions = run_query_bin(bits, "01")
+expected_count, expected_positions = 4, [0,2,4,6]
+if count == expected_count and positions == expected_positions:
+    print(f"PASS [bin_input] count={count} positions={positions}")
+    passed += 1
+else:
+    print(f"FAIL [bin_input] expected count={expected_count} positions={expected_positions} got count={count} positions={positions}")
+    failed += 1
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(0 if failed == 0 else 1)
