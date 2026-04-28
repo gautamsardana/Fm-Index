@@ -1,0 +1,24 @@
+# C++
+*.o
+*.obj
+*.out
+*.exe
+*.a
+*.so
+*.dylib
+build
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+env/
+dist/
+*.egg-info/
+
+# Data / misc
+*.txt
