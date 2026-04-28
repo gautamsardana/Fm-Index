@@ -2,7 +2,7 @@ CXX      = g++
 CXXFLAGS = -Wall -O2 -Iinclude -std=c++17
 BUILDDIR = build
 
-SRC = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/fm_index.cpp src/main.cpp
+SRC = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/jacobson_rank.cpp src/fm_index.cpp src/main.cpp
 
 all: $(BUILDDIR)/fm_index
 
