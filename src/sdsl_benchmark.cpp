@@ -98,14 +98,6 @@ int main(int argc, char *argv[]) {
   if (argc != 5) {
     cerr << "Usage: " << argv[0]
          << " <query_file> <build_out> <count_out> <locate_out>\n";
-    cerr << "Example: " << argv[0]
-         << " queries_50mb.txt experiments/results/build_sdsl.csv "
-            "experiments/results/count_sdsl.csv "
-            "experiments/results/locate_sdsl.csv\n";
-    cerr << "\nBenchmarks build time for 1MB, 5MB, and 10MB of english "
-            "dataset\n";
-    cerr << "Then runs COUNT and LOCATE queries on the index\n";
-    cerr << "Output files accept full or relative paths\n";
     return 1;
   }
 
