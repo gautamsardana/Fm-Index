@@ -22,6 +22,7 @@ dist/
 
 # Data / misc
 *.txt
+!queries_200mb.txt
 *.json
 
 datasets
