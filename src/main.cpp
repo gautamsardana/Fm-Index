@@ -63,18 +63,41 @@ std::pair<std::vector<uint8_t>, uint64_t> parse_pattern(const std::string &s) {
 }
 
 #ifdef PERF
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <malloc/malloc.h>
+#else
+#include <malloc.h>
+#endif
+
 struct PerfSnapshot {
     double cpu_ms;
     long   peak_rss_kb;
+    long   current_rss_kb;
 };
+
+static long get_current_rss_kb() {
+#ifdef __APPLE__
+    malloc_statistics_t stats;
+    malloc_zone_statistics(nullptr, &stats);
+    return (long)(stats.size_in_use / 1024);
+#else
+    struct mallinfo2 mi = mallinfo2();
+    return (long)(mi.uordblks / 1024);
+#endif
+}
 
 static PerfSnapshot take_snapshot() {
     struct rusage r;
     getrusage(RUSAGE_SELF, &r);
     double cpu_ms = (r.ru_utime.tv_sec + r.ru_stime.tv_sec) * 1000.0
                   + (r.ru_utime.tv_usec + r.ru_stime.tv_usec) / 1000.0;
-    long peak_kb = r.ru_maxrss / 1024; // macOS returns bytes
-    return {cpu_ms, peak_kb};
+#ifdef __APPLE__
+    long peak_kb = r.ru_maxrss / 1024;
+#else
+    long peak_kb = r.ru_maxrss;
+#endif
+    return {cpu_ms, peak_kb, get_current_rss_kb()};
 }
 #endif
 
@@ -134,7 +157,8 @@ int main(int argc, char *argv[]) {
         build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
         auto s1 = take_snapshot();
         std::cout << "perf build: cpu_ms=" << (s1.cpu_ms - s0.cpu_ms)
-                  << " peak_rss_kb=" << s1.peak_rss_kb << "\n";
+                  << " peak_rss_kb=" << s1.peak_rss_kb
+                  << " post_build_rss_kb=" << s1.current_rss_kb << "\n";
 #else
         build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
 #endif

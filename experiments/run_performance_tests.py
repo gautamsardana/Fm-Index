@@ -1,20 +1,30 @@
 import subprocess
+import argparse
 import random
 import sys
 import os
+import csv
 import tempfile
 import math
 
-BINARY  = "./build/fm_index"
-N_RUNS  = 3  # number of runs to average over
+BINARY = "./build/fm_index"
+N_RUNS = 3
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--label",    default="naive")
+parser.add_argument("--jacobson", action="store_true")
+parser.add_argument("--ssa",      type=int, default=0)
+args = parser.parse_args()
+
+LABEL      = args.label
+JACOBSON   = args.jacobson
+SSA        = args.ssa
 
 random.seed(42)
+os.makedirs("experiments/results", exist_ok=True)
 
 def generate_input(n_bits):
     return "".join(random.choice("01") for _ in range(n_bits))
-
-def generate_pattern(p_bits):
-    return "".join(random.choice("01") for _ in range(p_bits))
 
 def write_txt(text):
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
@@ -23,7 +33,6 @@ def write_txt(text):
     return f.name
 
 def write_bin(bits_str):
-    # pack bits string into bytes MSB first
     padded = bits_str + '0' * ((8 - len(bits_str) % 8) % 8)
     packed = bytearray()
     for i in range(0, len(padded), 8):
@@ -42,21 +51,23 @@ def parse_perf_output(output):
     for line in output.splitlines():
         if line.startswith("perf build:"):
             for part in line.split():
-                if "cpu_ms=" in part:      build["cpu_ms"]      = float(part.split("=")[1])
-                if "peak_rss_kb=" in part: build["peak_rss_kb"] = int(part.split("=")[1])
+                if "cpu_ms=" in part:           build["cpu_ms"]           = float(part.split("=")[1])
+                if "peak_rss_kb=" in part:      build["peak_rss_kb"]      = int(part.split("=")[1])
+                if "post_build_rss_kb=" in part: build["post_build_rss_kb"] = int(part.split("=")[1])
         elif line.startswith("perf queries:"):
             for part in line.split():
                 if "cpu_ms=" in part:        all_queries["cpu_ms"]      = float(part.split("=")[1])
                 if "mem_delta_kb=" in part:  all_queries["mem_delta_kb"] = int(part.split("=")[1])
-                if "n_queries=" in part:     all_queries["n_queries"]    = int(part.split("=")[1])
     return build, all_queries
 
 def run_build_and_query(fname, pattern, mode="locate", num_runs=1):
     pf = write_bin(pattern)
     try:
-        cmd = [BINARY, "--input", fname,
-               "--num-runs", str(num_runs),
-               f"--{mode}", "--pattern-file", pf]
+        cmd = [BINARY]
+        if JACOBSON: cmd += ["--jacobson"]
+        if SSA:      cmd += ["--ssa", str(SSA)]
+        cmd += ["--input", fname, "--num-runs", str(num_runs),
+                f"--{mode}", "--pattern-file", pf]
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         if result.returncode != 0:
             return None, None
@@ -67,98 +78,99 @@ def run_build_and_query(fname, pattern, mode="locate", num_runs=1):
 def avg(vals):
     return sum(vals) / len(vals) if vals else 0
 
-def fmt_mem(kb):
-    if kb >= 1024: return f"{kb/1024:.1f} MB"
-    return f"{kb} KB"
+def write_csv(filepath, rows, fieldnames):
+    with open(filepath, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 # ── Part 1: Build scaling ──────────────────────────────────────────────────────
-print("=" * 70)
-print("Part 1: Build scaling")
-print("=" * 70)
-print(f"{'n (bits)':<14} {'build cpu (ms)':<18} {'peak mem':<14} {'exp peak'}")
-print("-" * 60)
+print(f"=== Build scaling [{LABEL}] ===")
+print(f"{'n (bits)':<14} {'cpu (ms)':<18} {'peak mem (KB)':<18} {'post-build (KB)'}")
+print("-" * 70)
 
-build_sizes = [10**3, 10**4, 10**5, 10**6, 10**7]
+build_sizes = [10**2, 10**3, 10**4, 10**5, 10**6, 10**7]
+build_rows  = []
 
 for n in build_sizes:
-    cpu_ms_list, peak_kb_list = [], []
+    cpu_list, peak_list, post_list = [], [], []
     for _ in range(N_RUNS):
         text  = generate_input(n)
         fname = write_txt(text)
         try:
             build, _ = run_build_and_query(fname, "0" * 8, mode="count", num_runs=1)
             if build:
-                cpu_ms_list.append(build.get("cpu_ms", 0))
-                peak_kb_list.append(build.get("peak_rss_kb", 0))
+                cpu_list.append(build.get("cpu_ms", 0))
+                peak_list.append(build.get("peak_rss_kb", 0))
+                post_list.append(build.get("post_build_rss_kb", 0))
         finally:
             os.unlink(fname)
-    exp_peak_kb = (32 * n) // 1024
-    print(f"{n:<14} {avg(cpu_ms_list):<18.2f} {fmt_mem(int(avg(peak_kb_list))):<14} {fmt_mem(exp_peak_kb)}")
+    cpu  = avg(cpu_list)
+    peak = avg(peak_list)
+    post = avg(post_list)
+    build_rows.append({"n": n, "cpu_ms": round(cpu, 4), "peak_kb": int(peak), "post_build_kb": int(post)})
+    print(f"{n:<14} {cpu:<18.2f} {int(peak):<18} {int(post)}")
 
-# ── Part 2: Query scaling (n=10^7, 100 queries per pattern size) ───────────────
+write_csv(f"experiments/results/build_scaling_{LABEL}.csv", build_rows,
+          ["n", "cpu_ms", "peak_kb", "post_build_kb"])
+
+"""
+# ── Part 2: Query scaling ──────────────────────────────────────────────────────
 N_QUERIES   = 100
 QUERY_INPUT = 10**6
 
 p = 10
 pattern_lengths = []
-while p <= 10**6:
+while p <= 10**7:
     pattern_lengths.append(p)
     p *= 10
 
 for mode in ["count", "locate"]:
-    print()
-    print("=" * 70)
-    print(f"Part 2: Query scaling  n={QUERY_INPUT}  mode={mode}  n_queries={N_QUERIES}")
-    print("=" * 70)
-    print(f"{'p (bits)':<12} {'total cpu (ms)':<22} {'mem delta'}")
-    print("-" * 50)
+    print(f"\n=== Query {mode} [{LABEL}] ===")
+    print(f"{'p (bits)':<14} {'total cpu (ms)'}")
+    print("-" * 35)
 
-    results = {p: {"cpu_ms": [], "mem_delta_kb": []} for p in pattern_lengths}
-
+    rows = []
     for p in pattern_lengths:
+        if p > QUERY_INPUT:
+            break
+        cpu_list = []
         for _ in range(N_RUNS):
             text    = generate_input(QUERY_INPUT)
             start   = random.randint(0, QUERY_INPUT - p)
-            pattern = text[start:start + p]  # guaranteed to exist in text
+            pattern = text[start:start + p]
             fname   = write_txt(text)
             try:
-                build, all_q = run_build_and_query(fname, pattern, mode=mode, num_runs=N_QUERIES)
-                if all_q and build:
-                    results[p]["cpu_ms"].append(all_q.get("cpu_ms", 0))
-                    results[p]["mem_delta_kb"].append(all_q.get("mem_delta_kb", 0))
+                _, all_q = run_build_and_query(fname, pattern, mode=mode, num_runs=N_QUERIES)
+                if all_q:
+                    cpu_list.append(all_q.get("cpu_ms", 0))
             finally:
                 os.unlink(fname)
+        cpu = avg(cpu_list)
+        rows.append({"p": p, "cpu_ms": round(cpu, 4)})
+        print(f"{p:<14} {cpu:.4f}")
 
-    for p in pattern_lengths:
-        cpu = avg(results[p]["cpu_ms"])
-        mem = avg(results[p]["mem_delta_kb"])
-        print(f"{p:<12} {cpu:<22.4f} {fmt_mem(int(mem))}")
+    write_csv(f"experiments/results/query_{mode}_{LABEL}.csv", rows,
+              ["p", "cpu_ms"])
 
 # ── Part 3: Memory vs occurrences ─────────────────────────────────────────────
 OCC_INPUT   = 10**6
-OCC_PATTERN = "0" * 100  # fixed pattern of 100 zeros
+OCC_PATTERN = "0" * 100
 occ_counts  = [1, 10, 100, 1000, 10000]
 
-print()
-print("=" * 70)
-print(f"Part 3: locate memory vs occurrences  n={OCC_INPUT}  m=100")
-print("=" * 70)
-print(f"{'occ':<12} {'mem delta'}")
+print(f"\n=== Locate memory vs occurrences [{LABEL}] ===")
+print(f"{'occ':<12} {'mem delta (KB)'}")
 print("-" * 30)
 
 def build_text_with_occurrences(n, pattern, occ):
-    # start with random text that avoids the pattern
     text = list(generate_input(n))
     p = len(pattern)
-    placed = 0
-    attempts = 0
-    while placed < occ and attempts < occ * 100:
+    for _ in range(occ):
         pos = random.randint(0, n - p)
         text[pos:pos+p] = list(pattern)
-        placed += 1
-        attempts += 1
     return "".join(text)
 
+occ_rows = []
 for occ in occ_counts:
     mem_list = []
     for _ in range(N_RUNS):
@@ -170,6 +182,13 @@ for occ in occ_counts:
                 mem_list.append(all_q.get("mem_delta_kb", 0))
         finally:
             os.unlink(fname)
-    print(f"{occ:<12} {fmt_mem(int(avg(mem_list)))}")
+    mem = avg(mem_list)
+    occ_rows.append({"occ": occ, "mem_kb": round(mem, 2)})
+    print(f"{occ:<12} {mem:.2f}")
 
+write_csv(f"experiments/results/locate_memory_{LABEL}.csv", occ_rows,
+          ["occ", "mem_kb"])
+"""
+
+print(f"\nResults saved for [{LABEL}]")
 sys.exit(0)
