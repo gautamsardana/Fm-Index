@@ -24,13 +24,7 @@ run_performance_tests: | $(BUILDDIR)
 	python3 experiments/run_performance_tests.py --label ssa32 --ssa 32
 	python3 experiments/run_performance_tests.py --label jacobson_ssa32 --jacobson --ssa 32
 
-run_dataset_evaluations: $(BUILDDIR)/fm_index
-	python3 experiments/run_dataset_evaluations.py
-
-plot:
-	python3 experiments/plot_results.py
-
 clean:
 	rm -rf $(BUILDDIR)
 
-.PHONY: all run_correctness_tests run_performance_tests run_dataset_evaluations plot clean
+.PHONY: all run_correctness_tests run_performance_tests clean

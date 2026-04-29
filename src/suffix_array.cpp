@@ -16,11 +16,8 @@ void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s) {
 
     if (n == 0) return;
 
-    // rank[i] = current rank of suffix starting at i
-    // rank2[i] = rank of suffix starting at i+k (lookahead)
     std::vector<int64_t> rank(n), rank2(n);
 
-    // initial ranking by first two characters
     for (uint64_t i = 0; i < n; i++) {
         rank[i]  = get_bit_or_sentinel(s, i,     n);
         rank2[i] = get_bit_or_sentinel(s, i + 1, n);
@@ -35,7 +32,6 @@ void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s) {
 
         std::sort(idx.suffix_array.begin(), idx.suffix_array.end(), cmp);
 
-        // recompute ranks from sorted order
         std::vector<int64_t> new_rank(n);
         new_rank[idx.suffix_array[0]] = 0;
         for (uint64_t i = 1; i < n; i++) {
@@ -49,15 +45,12 @@ void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s) {
         rank = new_rank;
         if (rank[idx.suffix_array[n-1]] == (int64_t)(n - 1)) break;
 
-        // update rank2 for next iteration (lookahead by 2k)
         for (uint64_t i = 0; i < n; i++) {
             uint64_t next = i + 2 * k;
             rank2[i] = (next < n - 1) ? rank[next] : -1;
         }
     }
 
-    // c_table[c] = # of suffixes in sorted order before first suffix starting with c
-    // sorted order: $ < 0 < 1
     uint64_t zeros = 0;
     for (uint64_t i = 0; i < n; i++) if (get_bit_or_sentinel(s, i, n) == 0) zeros++;
     idx.c_table[0] = 1;          // 1 sentinel before all 0s

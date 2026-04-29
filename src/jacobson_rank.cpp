@@ -41,7 +41,7 @@ uint64_t popcount(uint64_t value) { return __builtin_popcountll(value); }
 
 void build_rank(JacobsonRank &rank, const std::vector<uint8_t> &bwt,
                 uint64_t n) {
-  rank.bwt = &bwt;  // store pointer, no copy
+  rank.bwt = &bwt;
   rank.n = n;
 
   uint64_t log_n = (n <= 1) ? 1 : (uint64_t)std::ceil(std::log2(n));
@@ -76,7 +76,6 @@ void build_rank(JacobsonRank &rank, const std::vector<uint8_t> &bwt,
       uint64_t bit_pos    = global_sub * rank.bits_per_relative_rank;
       set_bits(rank.relative_ranks, bit_pos, relative_rank, rank.bits_per_relative_rank);
 
-      // use get_bits + popcount instead of bit-by-bit loop
       uint64_t len = sub_end - sub_start;
       relative_rank += popcount(get_bits(bwt, sub_start, len));
     }

@@ -41,7 +41,7 @@ void build_bwt(FmIndex &idx, const std::vector<uint8_t> &s);
 // time: O(n/k)  space: O(n/k) — keep every k-th suffix array entry
 void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate);
 
-// time: O(n)  space: O(8n bytes) — one uint64_t per position
+// time: O(n)  space: O(8n bytes) naive — one uint64_t per position; O(n/log n) bytes Jacobson
 void build_rank(FmIndex &idx);
 
 // time: O(1)  space: O(1)
@@ -50,14 +50,10 @@ uint64_t get_rank(const FmIndex &idx, uint8_t c, uint64_t i);
 // time: O(m)  space: O(1) — m backward search steps, each O(1) rank lookup
 uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
 
-// time: O(m + occ)  space: O(8*occ bytes) — backward search + SA lookup per occurrence
+// time: O(m + occ) full SA, O(m + occ*k) sparse SA  space: O(8*occ bytes)
 std::vector<uint64_t> query_locate(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
 
-// time: O(n + len)  space: O(n) — extract substring [start, end) using SA; SSA uses LF with sampled SA
+// time: O(n + len) full SA, O(n/k + k + len) sparse SA  space: O(n) full SA, O(n/k) sparse SA
 std::string extract_substring(const FmIndex &idx, uint64_t start, uint64_t end);
-
-void store_index(const FmIndex &idx, const std::string &filepath);
-
-FmIndex load_index(const std::string &filepath);
 
 #endif

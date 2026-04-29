@@ -56,7 +56,8 @@ def parse_perf_output(output):
                 if "post_build_rss_kb=" in part: build["post_build_rss_kb"] = int(part.split("=")[1])
         elif line.startswith("perf queries:"):
             for part in line.split():
-                if "cpu_ms=" in part: all_queries["cpu_ms"] = float(part.split("=")[1])
+                if "cpu_ms=" in part:       all_queries["cpu_ms"]       = float(part.split("=")[1])
+                if "mem_total_kb=" in part: all_queries["mem_total_kb"] = int(part.split("=")[1])
     return build, all_queries
 
 def run_build_and_query(fname, pattern, mode="locate", num_runs=1):
@@ -83,8 +84,6 @@ def write_csv(filepath, rows, fieldnames):
         writer.writeheader()
         writer.writerows(rows)
 
-
-# ── Part 1: Build scaling ──────────────────────────────────────────────────────
 print(f"=== Build scaling [{LABEL}] ===")
 print(f"{'n (bits)':<14} {'cpu (ms)':<18} {'peak mem (KB)':<18} {'post-build (KB)'}")
 print("-" * 70)
@@ -113,12 +112,11 @@ for n in build_sizes:
 
 write_csv(f"experiments/results/build_scaling_{LABEL}.csv", build_rows,
           ["n", "cpu_ms", "peak_kb", "post_build_kb"])
-"""
-# ── Part 2: Query scaling (count only) ────────────────────────────────────────
+
+
 N_QUERIES   = 100
 QUERY_INPUT = 10**6
 
-# get index memory from build CSV at QUERY_INPUT
 def get_index_mem_kb(label, n):
     path = f"experiments/results/build_scaling_{label}.csv"
     if not os.path.exists(path):
@@ -137,7 +135,7 @@ while p <= QUERY_INPUT:
     pattern_lengths.append(p)
     p *= 10
 
-for mode in ["count"]:
+for mode in ["count", "locate"]:
     print(f"\n=== Query {mode} [{LABEL}] ===")
     print(f"{'p (bits)':<14} {'total cpu (ms)':<22} {'index mem (KB)'}")
     print("-" * 50)
@@ -161,44 +159,6 @@ for mode in ["count"]:
 
     write_csv(f"experiments/results/query_{mode}_{LABEL}.csv", rows,
               ["p", "cpu_ms", "index_mem_kb"])
-"""
-"""
-# ── Part 3: Memory vs occurrences ─────────────────────────────────────────────
-OCC_INPUT   = 10**6
-OCC_PATTERN = "0" * 100
-occ_counts  = [1, 10, 100, 1000, 10000]
-
-print(f"\n=== Locate memory vs occurrences [{LABEL}] ===")
-print(f"{'occ':<12} {'mem delta (KB)'}")
-print("-" * 30)
-
-def build_text_with_occurrences(n, pattern, occ):
-    text = list(generate_input(n))
-    p = len(pattern)
-    for _ in range(occ):
-        pos = random.randint(0, n - p)
-        text[pos:pos+p] = list(pattern)
-    return "".join(text)
-
-occ_rows = []
-for occ in occ_counts:
-    mem_list = []
-    for _ in range(N_RUNS):
-        text  = build_text_with_occurrences(OCC_INPUT, OCC_PATTERN, occ)
-        fname = write_txt(text)
-        try:
-            _, all_q = run_build_and_query(fname, OCC_PATTERN, mode="locate", num_runs=1)
-            if all_q:
-                mem_list.append(all_q.get("mem_delta_kb", 0))
-        finally:
-            os.unlink(fname)
-    mem = avg(mem_list)
-    occ_rows.append({"occ": occ, "mem_kb": round(mem, 2)})
-    print(f"{occ:<12} {mem:.2f}")
-
-write_csv(f"experiments/results/locate_memory_{LABEL}.csv", occ_rows,
-          ["occ", "mem_kb"])
-"""
 
 print(f"\nResults saved for [{LABEL}]")
 sys.exit(0)
