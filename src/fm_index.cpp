@@ -1,18 +1,7 @@
 #include "fm_index.h"
-#include "debug.h"
 
 #include <algorithm>
-#include <fstream>
 #include <stdexcept>
-
-void store_index(const FmIndex &idx, const std::string &filepath) {
-    // TODO
-}
-
-FmIndex load_index(const std::string &filepath) {
-    // TODO
-    return {};
-}
 
 uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len) {
     uint64_t lo = 0, hi = idx.n;
@@ -24,13 +13,12 @@ uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, ui
         if (lo >= hi) return 0;
     }
 
-    DEBUG_PRINT("query_count: lo=" << lo << " hi=" << hi << " count=" << (hi - lo));
     return hi - lo;
 }
 
 std::vector<uint64_t> query_locate(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len) {
     auto lf_map = [&](uint64_t row) -> uint64_t {
-        if (row == idx.sentinel_row) return 0; // '$' maps to first row
+        if (row == idx.sentinel_row) return 0;
         uint8_t c = get_bit(idx.bwt, row);
         return idx.c_table[c] + get_rank(idx, c, row);
     };
@@ -87,7 +75,7 @@ std::string extract_substring(const FmIndex &idx, uint64_t start, uint64_t end) 
     }
 
     auto lf_map = [&](uint64_t row) -> uint64_t {
-        if (row == idx.sentinel_row) return 0; // '$' maps to first row
+        if (row == idx.sentinel_row) return 0;
         uint8_t c = get_bit(idx.bwt, row);
         return idx.c_table[c] + get_rank(idx, c, row);
     };
@@ -122,6 +110,7 @@ std::string extract_substring(const FmIndex &idx, uint64_t start, uint64_t end) 
             row = lf_map(row);
         }
     }
+
     std::string out;
     out.reserve(end - start);
 

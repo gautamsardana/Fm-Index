@@ -22,8 +22,7 @@ uint64_t get_bits(const std::vector<uint8_t> &v, uint64_t pos, uint64_t width);
 void set_bits(std::vector<uint8_t> &v, uint64_t pos, uint64_t value,
               uint8_t width);
 
-uint64_t popcount(uint64_t value); // Counts how many 1's are set in a
-                                   // uint_64_t, should be a constant operation
+uint64_t popcount(uint64_t value);
 
 // time: O(n)  space: O(n/log(n) + n/log^2(n)) — build chunk & sub-chunk
 void build_rank(JacobsonRank &rank, const std::vector<uint8_t> &bwt,

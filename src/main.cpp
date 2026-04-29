@@ -65,6 +65,7 @@ std::pair<std::vector<uint8_t>, uint64_t> parse_pattern(const std::string &s) {
 #ifdef PERF
 #ifdef __APPLE__
 #include <mach/mach.h>
+#include <malloc/malloc.h>
 #else
 #include <malloc.h>
 #endif
@@ -77,20 +78,14 @@ struct PerfSnapshot {
 
 static long get_current_rss_kb() {
 #ifdef __APPLE__
-    mach_task_basic_info_data_t info;
-    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
-                  (task_info_t)&info, &count) == KERN_SUCCESS)
-        return (long)(info.resident_size / 1024);
-    return 0;
+    // flush allocator's free list back to OS before measuring
+    malloc_zone_pressure_relief(nullptr, 0);
+    malloc_statistics_t stats;
+    malloc_zone_statistics(nullptr, &stats);
+    return (long)(stats.size_in_use / 1024);
 #else
-    long rss = 0;
-    FILE *f = fopen("/proc/self/statm", "r");
-    if (!f) return 0;
-    long pages;
-    fscanf(f, "%*ld %ld", &pages); // second field is resident pages
-    fclose(f);
-    return pages * 4; // 4KB pages on Linux
+    struct mallinfo2 mi = mallinfo2();
+    return (long)(mi.uordblks / 1024);
 #endif
 }
 

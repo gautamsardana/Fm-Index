@@ -16,10 +16,8 @@ uint64_t get_rank(const FmIndex &idx, uint8_t c, uint64_t i) {
     uint64_t rank_1;
 
     if (idx.use_jacobson) {
-        // Use Jacobson rank for O(1) time with O(n/log n) space
         rank_1 = get_rank(idx.jacobson_rank, i);
     } else {
-        // Use naive rank table for O(1) time with O(n) space
         rank_1 = idx.rank_table[i];
     }
 
