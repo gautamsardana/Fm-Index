@@ -11,12 +11,23 @@
 using namespace sdsl;
 using namespace std;
 
-pair<vector<uint8_t>, uint64_t> read_binary_input(const string &filepath) {
+pair<vector<uint8_t>, uint64_t> read_binary_input(const string &filepath, uint64_t max_mb = 0) {
   ifstream f(filepath, ios::binary);
   if (!f)
     throw runtime_error("Cannot open file: " + filepath);
 
-  vector<uint8_t> packed(istreambuf_iterator<char>(f), {});
+  vector<uint8_t> packed;
+
+  if (max_mb > 0) {
+    uint64_t max_bytes = max_mb * 1024 * 1024;
+    packed.resize(max_bytes);
+    f.read(reinterpret_cast<char*>(packed.data()), max_bytes);
+    uint64_t bytes_read = f.gcount();
+    packed.resize(bytes_read);
+  } else {
+    packed.assign(istreambuf_iterator<char>(f), {});
+  }
+
   uint64_t n_bits = packed.size() * 8;
 
   return {packed, n_bits};
@@ -86,7 +97,7 @@ int main(int argc, char *argv[]) {
   if (argc != 5) {
     cerr << "Usage: " << argv[0] << " <query_file> <build_out> <count_out> <locate_out>\n";
     cerr << "Example: " << argv[0] << " queries_50mb.txt experiments/results/build_sdsl.csv experiments/results/count_sdsl.csv experiments/results/locate_sdsl.csv\n";
-    cerr << "\nBenchmarks build time for 50MB english dataset\n";
+    cerr << "\nBenchmarks build time for 1MB, 5MB, and 10MB of english dataset\n";
     cerr << "Then runs COUNT and LOCATE queries on the index\n";
     cerr << "Output files accept full or relative paths\n";
     return 1;
@@ -97,6 +108,8 @@ int main(int argc, char *argv[]) {
   string count_output = argv[3];
   string locate_output = argv[4];
   string input_file = "experiments/datasets/english_50MB";
+
+  vector<uint64_t> input_sizes = {1, 5, 10}; // MB
 
   try {
     // Open all output files first to fail fast
@@ -114,57 +127,66 @@ int main(int argc, char *argv[]) {
       throw runtime_error("Cannot open locate output file: " + locate_output);
     }
 
-    // ===== BUILD BENCHMARKING =====
-    cerr << "=== SDSL Build Benchmarking ===\n";
-    cerr << "Building 50MB english index...\n";
+    // Write headers
+    build_out << "input_size_mb,build_time_ms,peak_memory_kb\n";
+    count_out << "input_size_mb,query_size,avg_time_us,avg_memory_kb\n";
+    locate_out << "input_size_mb,query_size,avg_time_us,avg_memory_kb\n";
 
-    auto [packed, n_bits] = read_binary_input(input_file);
-    cerr << "  Input size: " << n_bits << " bits\n";
+    for (uint64_t size_mb : input_sizes) {
+      cerr << "\n=== Processing " << size_mb << "MB ===\n";
 
-    cerr << "  Encoding to alphabet...\n";
-    string encoded_text = encode_binary_to_alphabet(packed, n_bits);
+      // ===== BUILD BENCHMARKING =====
+      cerr << "Building " << size_mb << "MB english index...\n";
 
-    cerr << "  Building SDSL FM-index...\n";
-    long mem_before = get_rss_kb();
-    auto build_start = chrono::high_resolution_clock::now();
+      auto [packed, n_bits] = read_binary_input(input_file, size_mb);
+      cerr << "  Input size: " << n_bits << " bits (" << (n_bits / 8.0 / 1024 / 1024) << " MB)\n";
 
-    csa_wt<> fm_index;
-    construct_im(fm_index, encoded_text, 1);
+      cerr << "  Encoding to alphabet...\n";
+      string encoded_text = encode_binary_to_alphabet(packed, n_bits);
 
-    auto build_end = chrono::high_resolution_clock::now();
-    long mem_after = get_rss_kb();
+      cerr << "  Building SDSL FM-index...\n";
+      long mem_before = get_rss_kb();
+      auto build_start = chrono::high_resolution_clock::now();
 
-    auto build_time_ms = chrono::duration_cast<chrono::milliseconds>(
-        build_end - build_start).count();
+      csa_wt<> fm_index;
+      construct_im(fm_index, encoded_text, 1);
 
-    cerr << "  Build time: " << build_time_ms << " ms\n";
-    cerr << "  Peak RSS: " << mem_after << " KB\n";
+      auto build_end = chrono::high_resolution_clock::now();
+      long mem_after = get_rss_kb();
 
-    // Write build results
-    build_out << "input_size,build_time_ms,peak_memory_kb\n";
-    build_out << "50MB," << build_time_ms << "," << mem_after << "\n";
-    build_out.close();
+      auto build_time_ms = chrono::duration_cast<chrono::milliseconds>(
+          build_end - build_start).count();
 
-    cerr << "\nBuild results written to: " << build_output << "\n";
+      cerr << "  Build time: " << build_time_ms << " ms\n";
+      cerr << "  Peak RSS: " << mem_after << " KB\n";
 
-    // ===== QUERY BENCHMARKING =====
-    cerr << "\n=== SDSL Query Benchmarking ===\n";
+      // Write build results
+      build_out << size_mb << "," << build_time_ms << "," << mem_after << "\n";
+      build_out.flush();
 
-    cerr << "Reading queries from: " << query_file << "\n";
-    vector<QuerySpec> queries = read_query_file(query_file);
-    cerr << "Loaded " << queries.size() << " queries\n";
+      // ===== QUERY BENCHMARKING =====
+      cerr << "Running queries for " << size_mb << "MB index...\n";
 
-    map<uint64_t, vector<QuerySpec>> queries_by_size;
-    for (const auto &q : queries) {
-      queries_by_size[q.size].push_back(q);
-    }
+      cerr << "  Reading queries from: " << query_file << "\n";
+      vector<QuerySpec> queries = read_query_file(query_file);
 
-    cerr << "Running queries grouped by size...\n";
+      // Filter queries to only include patterns that fit in this input size
+      vector<QuerySpec> valid_queries;
+      for (const auto &q : queries) {
+        if (q.offset + q.size <= n_bits) {
+          valid_queries.push_back(q);
+        }
+      }
+      cerr << "  Using " << valid_queries.size() << " valid queries (out of " << queries.size() << ")\n";
 
-    count_out << "query_size,avg_time_us,avg_memory_kb\n";
-    locate_out << "query_size,avg_time_us,avg_memory_kb\n";
+      map<uint64_t, vector<QuerySpec>> queries_by_size;
+      for (const auto &q : valid_queries) {
+        queries_by_size[q.size].push_back(q);
+      }
 
-    for (const auto &[query_size, size_queries] : queries_by_size) {
+      cerr << "  Running queries grouped by size...\n";
+
+      for (const auto &[query_size, size_queries] : queries_by_size) {
       double count_total_time_us = 0;
       long count_total_mem_kb = 0;
 
@@ -218,23 +240,29 @@ int main(int argc, char *argv[]) {
       double locate_avg_mem_kb =
           static_cast<double>(locate_total_mem_kb) / size_queries.size();
 
-      count_out << query_size << "," << count_avg_time_us << ","
-                << count_avg_mem_kb << "\n";
-      locate_out << query_size << "," << locate_avg_time_us << ","
-                 << locate_avg_mem_kb << "\n";
+        count_out << size_mb << "," << query_size << "," << count_avg_time_us << ","
+                  << count_avg_mem_kb << "\n";
+        locate_out << size_mb << "," << query_size << "," << locate_avg_time_us << ","
+                   << locate_avg_mem_kb << "\n";
 
-      cerr << "Size " << query_size << " bits: " << size_queries.size()
-           << " queries\n";
-      cerr << "  COUNT - avg time: " << count_avg_time_us << " μs\n";
-      cerr << "  LOCATE - avg time: " << locate_avg_time_us << " μs\n";
+        cerr << "    Size " << query_size << " bits: " << size_queries.size()
+             << " queries\n";
+        cerr << "      COUNT - avg time: " << count_avg_time_us << " μs\n";
+        cerr << "      LOCATE - avg time: " << locate_avg_time_us << " μs\n";
+      }
+
+      count_out.flush();
+      locate_out.flush();
     }
 
+    build_out.close();
     count_out.close();
     locate_out.close();
 
-    cerr << "\nResults written to:\n";
-    cerr << "  " << count_output << "\n";
-    cerr << "  " << locate_output << "\n";
+    cerr << "\nAll results written to:\n";
+    cerr << "  Build: " << build_output << "\n";
+    cerr << "  Count: " << count_output << "\n";
+    cerr << "  Locate: " << locate_output << "\n";
 
   } catch (const exception &e) {
     cerr << "Error: " << e.what() << "\n";
