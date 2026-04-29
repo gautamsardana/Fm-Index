@@ -83,30 +83,58 @@ vector<QuerySpec> read_query_file(const string &filepath) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 3) {
-    cerr << "Usage: " << argv[0] << " <input_file> <query_file>\n";
-    cerr << "Example: " << argv[0] << " data.bin queries.txt\n";
-    cerr << "\nQuery file format: offset,size (one per line)\n";
-    cerr << "Runs both COUNT and LOCATE operations\n";
-    cerr << "Output: experiments/results/count_sdsl.csv and locate_sdsl.csv\n";
+  if (argc != 2) {
+    cerr << "Usage: " << argv[0] << " <query_file>\n";
+    cerr << "Example: " << argv[0] << " queries_50mb.txt\n";
+    cerr << "\nBenchmarks build time for 50MB english dataset\n";
+    cerr << "Then runs COUNT and LOCATE queries on the index\n";
+    cerr << "Output: experiments/results/build_sdsl.csv, count_sdsl.csv, locate_sdsl.csv\n";
     return 1;
   }
 
-  string input_file = argv[1];
-  string query_file = argv[2];
+  string query_file = argv[1];
+  string input_file = "experiments/datasets/english_50MB";
 
   try {
-    cerr << "Reading input file: " << input_file << "\n";
-    auto [packed, n_bits] = read_binary_input(input_file);
-    cerr << "Input size: " << n_bits << " bits\n";
+    // ===== BUILD BENCHMARKING =====
+    cerr << "=== SDSL Build Benchmarking ===\n";
+    cerr << "Building 50MB english index...\n";
 
-    cerr << "Encoding to alphabet...\n";
+    auto [packed, n_bits] = read_binary_input(input_file);
+    cerr << "  Input size: " << n_bits << " bits\n";
+
+    cerr << "  Encoding to alphabet...\n";
     string encoded_text = encode_binary_to_alphabet(packed, n_bits);
 
-    cerr << "Building SDSL FM-index...\n";
+    cerr << "  Building SDSL FM-index...\n";
+    long mem_before = get_rss_kb();
+    auto build_start = chrono::high_resolution_clock::now();
+
     csa_wt<> fm_index;
     construct_im(fm_index, encoded_text, 1);
-    cerr << "Build complete!\n";
+
+    auto build_end = chrono::high_resolution_clock::now();
+    long mem_after = get_rss_kb();
+
+    auto build_time_ms = chrono::duration_cast<chrono::milliseconds>(
+        build_end - build_start).count();
+
+    cerr << "  Build time: " << build_time_ms << " ms\n";
+    cerr << "  Peak RSS: " << mem_after << " KB\n";
+
+    // Write build results
+    ofstream build_out("experiments/results/build_sdsl.csv");
+    if (!build_out) {
+      throw runtime_error("Cannot open build output file");
+    }
+    build_out << "input_size,build_time_ms,peak_memory_kb\n";
+    build_out << "50MB," << build_time_ms << "," << mem_after << "\n";
+    build_out.close();
+
+    cerr << "\nBuild results written to: experiments/results/build_sdsl.csv\n";
+
+    // ===== QUERY BENCHMARKING =====
+    cerr << "\n=== SDSL Query Benchmarking ===\n";
 
     cerr << "Reading queries from: " << query_file << "\n";
     vector<QuerySpec> queries = read_query_file(query_file);
