@@ -27,3 +27,5 @@ dist/
 *.json
 
 datasets
+experiments/plots/
+experiments/results/

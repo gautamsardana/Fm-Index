@@ -74,12 +74,13 @@ void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate) {
 
     std::vector<uint64_t> sampled;
     sampled.reserve((idx.suffix_array.size() + sampling_rate - 1) / sampling_rate);
-
-    for (uint64_t i = 0; i < idx.suffix_array.size(); i += sampling_rate) {
+    for (uint64_t i = 0; i < idx.suffix_array.size(); i += sampling_rate)
         sampled.push_back(idx.suffix_array[i]);
-    }
 
-    idx.suffix_array.swap(sampled);
+    // free full SA, then assign sampled
+    std::vector<uint64_t>().swap(idx.suffix_array);
+    idx.suffix_array = std::move(sampled);
+
     idx.use_sparse_sa = true;
     idx.sa_sampling_rate = sampling_rate;
 }

@@ -30,25 +30,27 @@ struct FmIndex {
     uint64_t sa_sampling_rate = 1;       // Keep every k-th suffix array entry when sparse
 };
 
-// time: O(n log^2 n)  space: O(64n bits) — prefix doubling sort over n+1 suffixes
+// n = text length in bits, m = pattern length in bits, occ = number of occurrences
+
+// time: O(n log^2 n)  space: O(32n bytes) peak during build (SA + rank arrays)
 void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s);
 
-// time: O(n)  space: O(n/k) — keep every k-th suffix array entry in idx.suffix_array
-void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate);
-
-// time: O(n)  space: O(n bits) — single pass over SA, BWT stored bit-packed
+// time: O(n)  space: O(n/8 bytes) — BWT stored bit-packed
 void build_bwt(FmIndex &idx, const std::vector<uint8_t> &s);
 
-// time: O(n)  space: O(64n bits) — prefix sum of 1s over BWT
+// time: O(n/k)  space: O(n/k) — keep every k-th suffix array entry
+void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate);
+
+// time: O(n)  space: O(8n bytes) — one uint64_t per position
 void build_rank(FmIndex &idx);
 
 // time: O(1)  space: O(1)
 uint64_t get_rank(const FmIndex &idx, uint8_t c, uint64_t i);
 
-// time: O(p)  space: O(1) — backward search over pattern bits
+// time: O(m)  space: O(1) — m backward search steps, each O(1) rank lookup
 uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
 
-// time: O(p + occ)  space: O(64*occ bits) — backward search + SA lookup per occurrence
+// time: O(m + occ)  space: O(8*occ bytes) — backward search + SA lookup per occurrence
 std::vector<uint64_t> query_locate(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
 
 // time: O(n + len)  space: O(n) — extract substring [start, end) using SA; SSA uses LF with sampled SA
