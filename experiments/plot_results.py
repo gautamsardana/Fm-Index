@@ -1,7 +1,6 @@
 import csv
 import math
 import os
-import sys
 
 os.makedirs("experiments/plots", exist_ok=True)
 
@@ -11,9 +10,11 @@ try:
     matplotlib.use("Agg")
 except ImportError:
     print("matplotlib not installed")
-    sys.exit(1)
+    exit(1)
 
 VARIANTS = ["naive", "jacobson", "ssa32", "jacobson_ssa32"]
+COLORS   = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
+MARKERS  = ["o", "s", "^", "D"]
 
 def read_csv(filepath):
     if not os.path.exists(filepath):
@@ -21,81 +22,93 @@ def read_csv(filepath):
     with open(filepath) as f:
         return list(csv.DictReader(f))
 
-def make_plot(title, xlabel, ylabel, x_col, y_col, files_by_variant,
-              theory_fn, theory_label, outfile):
-    fig, ax = plt.subplots()
-    ref_xs, ref_ys = None, None
+def add_theory(ax, xs, fn, label, ref_y, ref_x):
+    ys = [fn(x) for x in xs]
+    c = ref_y / fn(ref_x) if fn(ref_x) > 0 else 1
+    ax.plot(xs, [c * y for y in ys],
+            linestyle='--', color='gray', linewidth=1.5, label=label, zorder=2)
 
-    for variant, filepath in files_by_variant:
-        rows = read_csv(filepath)
-        if not rows:
-            continue
-        xs = [float(r[x_col]) for r in rows]
-        ys = [float(r[y_col]) for r in rows]
-        ax.plot(xs, ys, marker='o', label=variant)
-        if ref_xs is None:
-            ref_xs, ref_ys = xs, ys
+# ── Plot 1: Build time ─────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(9, 6))
+ref_xs, ref_ys = None, None
+for v, c, m in zip(VARIANTS, COLORS, MARKERS):
+    rows = read_csv(f"experiments/results/build_scaling_{v}.csv")
+    if not rows: continue
+    xs = [float(r["n"]) for r in rows]
+    ys = [float(r["cpu_ms"]) for r in rows]
+    ax.plot(xs, ys, marker=m, color=c, label=v, linewidth=2, markersize=7)
+    if ref_xs is None: ref_xs, ref_ys = xs, ys
 
-    if ref_xs and theory_fn:
-        theory_ys = [theory_fn(x) for x in ref_xs]
-        if theory_ys[-1] > 0 and ref_ys[-1] > 0:
-            c = ref_ys[-1] / theory_ys[-1]
-            ax.plot(ref_xs, [c * t for t in theory_ys],
-                    linestyle='--', color='gray', label=theory_label)
+if ref_xs:
+    add_theory(ax, ref_xs, lambda n: n * math.log2(n)**2,
+               "O(n log²n)", ref_ys[-1], ref_xs[-1])
 
-    ax.set_xscale("log")
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend()
-    fig.savefig(outfile, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved {outfile}")
+ax.set_xscale("log")
+ax.set_xlabel("n (bits)", fontsize=12)
+ax.set_ylabel("CPU time (ms)", fontsize=12)
+ax.set_title("Build time vs input size", fontsize=13)
+ax.legend(fontsize=10)
+ax.grid(True, which="both", linestyle=":", alpha=0.5)
+fig.tight_layout()
+fig.savefig("experiments/plots/build_time.png", dpi=150)
+plt.close(fig)
+print("Saved build_time.png")
 
-# Build time
-make_plot(
-    "Build time vs input size", "n (bits)", "CPU time (ms)", "n", "cpu_ms",
-    [(v, f"experiments/results/build_scaling_{v}.csv") for v in VARIANTS],
-    lambda n: n * (math.log2(n) ** 2), "O(n log²n)",
-    "experiments/plots/build_time.png"
-)
+# ── Plot 2: Build peak memory ──────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(9, 6))
+ref_xs, ref_ys = None, None
+for v, c, m in zip(VARIANTS, COLORS, MARKERS):
+    rows = read_csv(f"experiments/results/build_scaling_{v}.csv")
+    if not rows: continue
+    xs = [float(r["n"]) for r in rows]
+    ys = [float(r["peak_kb"]) for r in rows]
+    ax.plot(xs, ys, marker=m, color=c, label=v, linewidth=2, markersize=7)
+    if ref_xs is None: ref_xs, ref_ys = xs, ys
 
-# Build peak memory
-make_plot(
-    "Build peak memory vs input size", "n (bits)", "Peak RSS (KB)", "n", "peak_kb",
-    [(v, f"experiments/results/build_scaling_{v}.csv") for v in VARIANTS],
-    lambda n: 32 * n / 1024, "O(n)",
-    "experiments/plots/build_peak_memory.png"
-)
+if ref_xs:
+    add_theory(ax, ref_xs, lambda n: n / 1024,
+               "O(n)", ref_ys[-1], ref_xs[-1])
 
-# Post-build memory
-make_plot(
-    "Post-build memory vs input size", "n (bits)", "RSS after build (KB)", "n", "post_build_kb",
-    [(v, f"experiments/results/build_scaling_{v}.csv") for v in VARIANTS],
-    lambda n: 16 * n / 1024, "O(n)",
-    "experiments/plots/build_post_memory.png"
-)
+ax.set_xscale("log")
+ax.set_xlabel("n (bits)", fontsize=12)
+ax.set_ylabel("Peak RSS (KB)", fontsize=12)
+ax.set_title("Build peak memory vs input size", fontsize=13)
+ax.legend(fontsize=10)
+ax.grid(True, which="both", linestyle=":", alpha=0.5)
+fig.tight_layout()
+fig.savefig("experiments/plots/build_peak_memory.png", dpi=150)
+plt.close(fig)
+print("Saved build_peak_memory.png")
 
-# Query count time
-make_plot(
-    "Count query time vs pattern length", "m (bits)", "CPU time (ms)", "p", "cpu_ms",
-    [(v, f"experiments/results/query_count_{v}.csv") for v in VARIANTS],
-    lambda m: m, "O(m)",
-    "experiments/plots/query_count_time.png"
-)
+# ── Plot 3: Post-build memory (log-log to show all 4 lines) ───────────────────
+fig, ax = plt.subplots(figsize=(9, 6))
+theory_configs = {
+    "naive":          (lambda n: n / 1024,       "O(n)"),
+    "jacobson":       (lambda n: n / 2048,       "O(n/2)"),
+    "ssa32":          (lambda n: n / (32 * 1024), "O(n/32)"),
+    "jacobson_ssa32": (lambda n: n / (64 * 1024), "O(n/64)"),
+}
+for v, c, m in zip(VARIANTS, COLORS, MARKERS):
+    rows = read_csv(f"experiments/results/build_scaling_{v}.csv")
+    if not rows: continue
+    xs = [float(r["n"]) for r in rows]
+    ys = [float(r["post_build_kb"]) for r in rows]
+    ax.plot(xs, ys, marker=m, color=c, label=v, linewidth=2, markersize=7)
+    fn, tlabel = theory_configs[v]
+    theory_ys = [fn(x) for x in xs]
+    if theory_ys[-1] > 0 and ys[-1] > 0:
+        c_scale = ys[-1] / theory_ys[-1]
+        ax.plot(xs, [c_scale * y for y in theory_ys],
+                linestyle='--', color=c, linewidth=1, alpha=0.5)
 
-# Query locate time
-make_plot(
-    "Locate query time vs pattern length", "m (bits)", "CPU time (ms)", "p", "cpu_ms",
-    [(v, f"experiments/results/query_locate_{v}.csv") for v in VARIANTS],
-    lambda m: m, "O(m)",
-    "experiments/plots/query_locate_time.png"
-)
-
-# Locate memory vs occurrences
-make_plot(
-    "Locate memory vs occurrences", "occurrences", "Memory delta (KB)", "occ", "mem_kb",
-    [(v, f"experiments/results/locate_memory_{v}.csv") for v in VARIANTS],
-    lambda o: o, "O(occ)",
-    "experiments/plots/locate_memory_occ.png"
-)
+ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_xlabel("n (bits)", fontsize=12)
+ax.set_ylabel("Heap in use (KB)", fontsize=12)
+ax.set_title("Post-build memory vs input size", fontsize=13)
+ax.legend(fontsize=10)
+ax.grid(True, which="both", linestyle=":", alpha=0.5)
+fig.tight_layout()
+fig.savefig("experiments/plots/build_post_memory.png", dpi=150)
+plt.close(fig)
+print("Saved build_post_memory.png")

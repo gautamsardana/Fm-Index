@@ -5,13 +5,14 @@
 #include <vector>
 
 struct JacobsonRank {
-  std::vector<uint8_t> bwt;
-  std::vector<uint64_t> chunk_rank;    // cumulative rank at each chunk
-  std::vector<uint8_t> relative_ranks; // relative rank for each sub-chunk
+  const std::vector<uint8_t> *bwt = nullptr; // pointer to BWT — no copy
+  std::vector<uint64_t> chunk_rank;           // cumulative rank at each chunk
+  std::vector<uint8_t> relative_ranks;        // relative rank for each sub-chunk
   uint64_t n = 0;
-  uint64_t chunk_size = 0;            // (log2(n))^2
-  uint64_t sub_chunk_size = 0;        // (log2(n))/2
-  uint8_t bits_per_relative_rank = 0; // log2((log2(n))^2) = 2*log2(log2(n))
+  uint64_t chunk_size = 0;                    // (log2(n))^2
+  uint64_t sub_chunk_size = 0;               // (log2(n))/2
+  uint64_t sub_chunks_per_chunk = 0;         // cached to avoid recomputing per query
+  uint8_t bits_per_relative_rank = 0;
 };
 
 // Note: get_bit and set_bit are defined in fm_index.h

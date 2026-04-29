@@ -56,8 +56,7 @@ def parse_perf_output(output):
                 if "post_build_rss_kb=" in part: build["post_build_rss_kb"] = int(part.split("=")[1])
         elif line.startswith("perf queries:"):
             for part in line.split():
-                if "cpu_ms=" in part:        all_queries["cpu_ms"]      = float(part.split("=")[1])
-                if "mem_delta_kb=" in part:  all_queries["mem_delta_kb"] = int(part.split("=")[1])
+                if "cpu_ms=" in part: all_queries["cpu_ms"] = float(part.split("=")[1])
     return build, all_queries
 
 def run_build_and_query(fname, pattern, mode="locate", num_runs=1):
@@ -83,6 +82,7 @@ def write_csv(filepath, rows, fieldnames):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
 
 # ── Part 1: Build scaling ──────────────────────────────────────────────────────
 print(f"=== Build scaling [{LABEL}] ===")
@@ -113,27 +113,36 @@ for n in build_sizes:
 
 write_csv(f"experiments/results/build_scaling_{LABEL}.csv", build_rows,
           ["n", "cpu_ms", "peak_kb", "post_build_kb"])
-
 """
-# ── Part 2: Query scaling ──────────────────────────────────────────────────────
+# ── Part 2: Query scaling (count only) ────────────────────────────────────────
 N_QUERIES   = 100
 QUERY_INPUT = 10**6
 
+# get index memory from build CSV at QUERY_INPUT
+def get_index_mem_kb(label, n):
+    path = f"experiments/results/build_scaling_{label}.csv"
+    if not os.path.exists(path):
+        return 0
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            if int(row["n"]) == n:
+                return int(row["post_build_kb"])
+    return 0
+
+index_mem_kb = get_index_mem_kb(LABEL, QUERY_INPUT)
+
 p = 10
 pattern_lengths = []
-while p <= 10**7:
+while p <= QUERY_INPUT:
     pattern_lengths.append(p)
     p *= 10
 
-for mode in ["count", "locate"]:
+for mode in ["count"]:
     print(f"\n=== Query {mode} [{LABEL}] ===")
-    print(f"{'p (bits)':<14} {'total cpu (ms)'}")
-    print("-" * 35)
-
+    print(f"{'p (bits)':<14} {'total cpu (ms)':<22} {'index mem (KB)'}")
+    print("-" * 50)
     rows = []
     for p in pattern_lengths:
-        if p > QUERY_INPUT:
-            break
         cpu_list = []
         for _ in range(N_RUNS):
             text    = generate_input(QUERY_INPUT)
@@ -147,12 +156,13 @@ for mode in ["count", "locate"]:
             finally:
                 os.unlink(fname)
         cpu = avg(cpu_list)
-        rows.append({"p": p, "cpu_ms": round(cpu, 4)})
-        print(f"{p:<14} {cpu:.4f}")
+        rows.append({"p": p, "cpu_ms": round(cpu, 4), "index_mem_kb": index_mem_kb})
+        print(f"{p:<14} {cpu:<22.4f} {index_mem_kb}")
 
     write_csv(f"experiments/results/query_{mode}_{LABEL}.csv", rows,
-              ["p", "cpu_ms"])
-
+              ["p", "cpu_ms", "index_mem_kb"])
+"""
+"""
 # ── Part 3: Memory vs occurrences ─────────────────────────────────────────────
 OCC_INPUT   = 10**6
 OCC_PATTERN = "0" * 100
