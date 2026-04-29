@@ -1,129 +1,210 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
 #include <chrono>
-#include <sys/resource.h>
+#include <fstream>
+#include <iostream>
+#include <map>
 #include <sdsl/suffix_arrays.hpp>
+#include <sstream>
+#include <string>
+#include <sys/resource.h>
+#include <vector>
 
 using namespace sdsl;
 using namespace std;
 
-// Read any file as binary (treat all bytes as data, extract bits)
 pair<vector<uint8_t>, uint64_t> read_binary_input(const string &filepath) {
-    ifstream f(filepath, ios::binary);
-    if (!f) throw runtime_error("Cannot open file: " + filepath);
+  ifstream f(filepath, ios::binary);
+  if (!f)
+    throw runtime_error("Cannot open file: " + filepath);
 
-    // Read all bytes from file
-    vector<uint8_t> packed(istreambuf_iterator<char>(f), {});
-    uint64_t n_bits = packed.size() * 8;
+  vector<uint8_t> packed(istreambuf_iterator<char>(f), {});
+  uint64_t n_bits = packed.size() * 8;
 
-    return {packed, n_bits};
+  return {packed, n_bits};
 }
 
-// Convert binary bit vector to alphabet string (0→'A', 1→'B')
-string encode_binary_to_alphabet(const vector<uint8_t> &packed, uint64_t n_bits) {
-    string encoded;
-    encoded.reserve(n_bits);
+string encode_binary_to_alphabet(const vector<uint8_t> &packed,
+                                 uint64_t n_bits) {
+  string encoded;
+  encoded.reserve(n_bits);
 
-    for (uint64_t i = 0; i < n_bits; i++) {
-        uint8_t bit = (packed[i / 8] >> (7 - (i % 8))) & 1;
-        encoded.push_back(bit ? 'B' : 'A');
-    }
+  for (uint64_t i = 0; i < n_bits; i++) {
+    uint8_t bit = (packed[i / 8] >> (7 - (i % 8))) & 1;
+    encoded.push_back(bit ? 'B' : 'A');
+  }
 
-    return encoded;
+  return encoded;
 }
 
-// Convert binary pattern to alphabet string
-string encode_pattern(const string &binary_pattern) {
-    string encoded;
-    encoded.reserve(binary_pattern.size());
+string extract_pattern(const vector<uint8_t> &packed, uint64_t offset,
+                       uint64_t size) {
+  string pattern;
+  pattern.reserve(size);
 
-    for (char c : binary_pattern) {
-        if (c == '0') encoded.push_back('A');
-        else if (c == '1') encoded.push_back('B');
-    }
+  for (uint64_t i = 0; i < size; i++) {
+    uint64_t bit_pos = offset + i;
+    uint8_t bit = (packed[bit_pos / 8] >> (7 - (bit_pos % 8))) & 1;
+    pattern.push_back(bit ? 'B' : 'A');
+  }
 
-    return encoded;
+  return pattern;
 }
 
-// Get current RSS memory in KB
 long get_rss_kb() {
-    struct rusage r;
-    getrusage(RUSAGE_SELF, &r);
+  struct rusage r;
+  getrusage(RUSAGE_SELF, &r);
 #ifdef __APPLE__
-    return r.ru_maxrss / 1024; // macOS returns bytes
+  return r.ru_maxrss / 1024;
 #else
-    return r.ru_maxrss; // Linux returns KB
+  return r.ru_maxrss;
 #endif
 }
 
+struct QuerySpec {
+  uint64_t offset;
+  uint64_t size;
+};
+
+vector<QuerySpec> read_query_file(const string &filepath) {
+  ifstream f(filepath);
+  if (!f)
+    throw runtime_error("Cannot open query file: " + filepath);
+
+  vector<QuerySpec> queries;
+  string line;
+  while (getline(f, line)) {
+    stringstream ss(line);
+    uint64_t offset, size;
+    char comma;
+    if (ss >> offset >> comma >> size && comma == ',') {
+      queries.push_back({offset, size});
+    }
+  }
+  return queries;
+}
+
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        cerr << "Usage: " << argv[0] << " <input_file> [pattern1] [pattern2] ...\n";
-        cerr << "Example: " << argv[0] << " data.bin 010101 11001\n";
-        return 1;
+  if (argc != 3) {
+    cerr << "Usage: " << argv[0] << " <input_file> <query_file>\n";
+    cerr << "Example: " << argv[0] << " data.bin queries.txt\n";
+    cerr << "\nQuery file format: offset,size (one per line)\n";
+    cerr << "Runs both COUNT and LOCATE operations\n";
+    cerr << "Output: experiments/results/count_sdsl.csv and locate_sdsl.csv\n";
+    return 1;
+  }
+
+  string input_file = argv[1];
+  string query_file = argv[2];
+
+  try {
+    cerr << "Reading input file: " << input_file << "\n";
+    auto [packed, n_bits] = read_binary_input(input_file);
+    cerr << "Input size: " << n_bits << " bits\n";
+
+    cerr << "Encoding to alphabet...\n";
+    string encoded_text = encode_binary_to_alphabet(packed, n_bits);
+
+    cerr << "Building SDSL FM-index...\n";
+    csa_wt<> fm_index;
+    construct_im(fm_index, encoded_text, 1);
+    cerr << "Build complete!\n";
+
+    cerr << "Reading queries from: " << query_file << "\n";
+    vector<QuerySpec> queries = read_query_file(query_file);
+    cerr << "Loaded " << queries.size() << " queries\n";
+
+    map<uint64_t, vector<QuerySpec>> queries_by_size;
+    for (const auto &q : queries) {
+      queries_by_size[q.size].push_back(q);
     }
 
-    string input_file = argv[1];
+    cerr << "Running queries grouped by size...\n";
 
-    try {
-        // Read binary input
-        cout << "Reading input file: " << input_file << "\n";
-        auto [packed, n_bits] = read_binary_input(input_file);
-        cout << "Input size: " << n_bits << " bits\n";
+    ofstream count_out("experiments/results/count_sdsl.csv");
+    ofstream locate_out("experiments/results/locate_sdsl.csv");
 
-        // Encode to alphabet
-        cout << "Encoding to alphabet...\n";
-        string encoded_text = encode_binary_to_alphabet(packed, n_bits);
-        cout << "Encoded size: " << encoded_text.size() << " characters\n";
+    if (!count_out || !locate_out) {
+      throw runtime_error("Cannot open output files in experiments/results/");
+    }
 
-        // Build SDSL FM-index
-        cout << "\nBuilding SDSL FM-index...\n";
-        auto build_start = chrono::high_resolution_clock::now();
+    count_out << "query_size,avg_time_us,avg_memory_kb\n";
+    locate_out << "query_size,avg_time_us,avg_memory_kb\n";
+
+    for (const auto &[query_size, size_queries] : queries_by_size) {
+      double count_total_time_us = 0;
+      long count_total_mem_kb = 0;
+
+      double locate_total_time_us = 0;
+      long locate_total_mem_kb = 0;
+
+      for (const auto &q : size_queries) {
+        string pattern = extract_pattern(packed, q.offset, q.size);
+
         long mem_before = get_rss_kb();
+        auto query_start = chrono::high_resolution_clock::now();
 
-        csa_wt<> fm_index;
-        construct_im(fm_index, encoded_text, 1);
+        size_t count_result = count(fm_index, pattern);
 
-        auto build_end = chrono::high_resolution_clock::now();
+        auto query_end = chrono::high_resolution_clock::now();
         long mem_after = get_rss_kb();
 
-        auto build_time_ms = chrono::duration_cast<chrono::milliseconds>(build_end - build_start).count();
+        auto query_time_us =
+            chrono::duration_cast<chrono::microseconds>(query_end - query_start)
+                .count();
+        long mem_delta = mem_after - mem_before;
 
-        cout << "Build complete!\n";
-        cout << "Build time: " << build_time_ms << " ms\n";
-        cout << "Peak RSS: " << mem_after << " KB\n";
-        cout << "Memory delta: " << (mem_after - mem_before) << " KB\n";
+        count_total_time_us += query_time_us;
+        count_total_mem_kb += mem_delta;
 
-        // Run queries if provided
-        if (argc > 2) {
-            cout << "\nRunning queries...\n";
-            for (int i = 2; i < argc; i++) {
-                string pattern = argv[i];
-                string encoded_pattern = encode_pattern(pattern);
+        mem_before = get_rss_kb();
+        query_start = chrono::high_resolution_clock::now();
 
-                auto query_start = chrono::high_resolution_clock::now();
-                size_t count_result = count(fm_index, encoded_pattern);
-                auto query_end = chrono::high_resolution_clock::now();
+        auto locations = locate(fm_index, pattern);
 
-                auto query_time_us = chrono::duration_cast<chrono::microseconds>(query_end - query_start).count();
+        query_end = chrono::high_resolution_clock::now();
+        mem_after = get_rss_kb();
 
-                cout << "Pattern: " << pattern
-                     << " | Count: " << count_result
-                     << " | Time: " << query_time_us << " μs\n";
-            }
-        }
+        query_time_us =
+            chrono::duration_cast<chrono::microseconds>(query_end - query_start)
+                .count();
+        mem_delta = mem_after - mem_before;
 
-        // Index size info
-        cout << "\nSDSL Index info:\n";
-        cout << "Index size in bytes: " << size_in_bytes(fm_index) << "\n";
-        cout << "Index size in MB: " << (size_in_bytes(fm_index) / 1024.0 / 1024.0) << "\n";
+        locate_total_time_us += query_time_us;
+        locate_total_mem_kb += mem_delta;
 
-    } catch (const exception &e) {
-        cerr << "Error: " << e.what() << "\n";
-        return 1;
+        (void)count_result;
+        (void)locations;
+      }
+
+      double count_avg_time_us = count_total_time_us / size_queries.size();
+      double count_avg_mem_kb =
+          static_cast<double>(count_total_mem_kb) / size_queries.size();
+
+      double locate_avg_time_us = locate_total_time_us / size_queries.size();
+      double locate_avg_mem_kb =
+          static_cast<double>(locate_total_mem_kb) / size_queries.size();
+
+      count_out << query_size << "," << count_avg_time_us << ","
+                << count_avg_mem_kb << "\n";
+      locate_out << query_size << "," << locate_avg_time_us << ","
+                 << locate_avg_mem_kb << "\n";
+
+      cerr << "Size " << query_size << " bits: " << size_queries.size()
+           << " queries\n";
+      cerr << "  COUNT - avg time: " << count_avg_time_us << " μs\n";
+      cerr << "  LOCATE - avg time: " << locate_avg_time_us << " μs\n";
     }
 
-    return 0;
+    count_out.close();
+    locate_out.close();
+
+    cerr << "\nResults written to:\n";
+    cerr << "  experiments/results/count_sdsl.csv\n";
+    cerr << "  experiments/results/locate_sdsl.csv\n";
+
+  } catch (const exception &e) {
+    cerr << "Error: " << e.what() << "\n";
+    return 1;
+  }
+
+  return 0;
 }
