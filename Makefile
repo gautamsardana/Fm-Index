@@ -16,6 +16,9 @@ $(BUILDDIR):
 $(BUILDDIR)/custom_benchmark: src/custom_benchmark.cpp $(BENCH_SRC) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+$(BUILDDIR)/sdsl_benchmark: src/sdsl_benchmark.cpp | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -I ~/include -L ~/lib $^ -o $@ -lsdsl -ldivsufsort -ldivsufsort64
+
 run_correctness_tests: | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -DDEBUG $(SRC) -o $(BUILDDIR)/fm_index
 	python3 experiments/run_correctness_tests.py $(if $(SSA),--ssa $(SSA),) $(if $(JACOBSON),--jacobson,)
