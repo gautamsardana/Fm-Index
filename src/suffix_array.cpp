@@ -64,3 +64,22 @@ void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s) {
     idx.c_table[1] = 1 + zeros;  // sentinel + all 0s before all 1s
     idx.c_table[2] = 0;
 }
+
+void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate) {
+    if (sampling_rate <= 1 || idx.suffix_array.empty()) {
+        idx.use_sparse_sa = false;
+        idx.sa_sampling_rate = 1;
+        return;
+    }
+
+    std::vector<uint64_t> sampled;
+    sampled.reserve((idx.suffix_array.size() + sampling_rate - 1) / sampling_rate);
+
+    for (uint64_t i = 0; i < idx.suffix_array.size(); i += sampling_rate) {
+        sampled.push_back(idx.suffix_array[i]);
+    }
+
+    idx.suffix_array.swap(sampled);
+    idx.use_sparse_sa = true;
+    idx.sa_sampling_rate = sampling_rate;
+}
