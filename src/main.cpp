@@ -82,7 +82,6 @@ void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson 
     auto [s, n_bits] = read_input(input_file);
     idx.n = n_bits + 1; // +1 for sentinel
     idx.use_jacobson = use_jacobson;
-
     build_suffix_array(idx, s);
     build_bwt(idx, s);
     build_rank(idx);
@@ -91,36 +90,24 @@ void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson 
 
 void print_usage(const char *prog) {
     std::cerr << "Usage:\n"
-              << "  " << prog << " [--jacobson] --input <file>                        (build only)\n"
-              << "  " << prog << " [--jacobson] --input <file> --count <p1> <p2> ...  (build + count queries)\n"
-              << "  " << prog << " [--jacobson] --input <file> --locate <p1> <p2> ... (build + locate queries)\n";
+              << "  " << prog << " [--jacobson] --input <file>\n"
+              << "     [--count  --pattern-file <file>]\n"
+              << "     [--locate --pattern-file <file>]\n"
+              << "     ...\n";
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        print_usage(argv[0]);
-        return 1;
-    }
+    if (argc < 3) { print_usage(argv[0]); return 1; }
 
-    // Check for --jacobson flag
     bool use_jacobson = false;
-    int arg_offset = 1;
-    if (std::string(argv[1]) == "--jacobson") {
-        use_jacobson = true;
-        arg_offset = 2;
-        if (argc < 4) {
-            print_usage(argv[0]);
-            return 1;
-        }
-    }
+    int i = 1;
+    if (std::string(argv[i]) == "--jacobson") { use_jacobson = true; i++; }
+
+    if (i >= argc || std::string(argv[i]) != "--input") { print_usage(argv[0]); return 1; }
+    std::string input_file = argv[++i];
+    i++;
 
     try {
-        if (std::string(argv[arg_offset]) != "--input") {
-            print_usage(argv[0]);
-            return 1;
-        }
-
-        std::string input_file = argv[arg_offset + 1];
         FmIndex idx;
 
 #ifdef PERF
@@ -133,47 +120,64 @@ int main(int argc, char *argv[]) {
         build_index(idx, input_file, use_jacobson);
 #endif
 
-        if (argc == arg_offset + 2) {
+        if (i >= argc) {
             std::cout << "build: n=" << (idx.n - 1) << " bits\n";
             return 0;
         }
 
-        std::string query_mode = argv[arg_offset + 2];
-        if (query_mode != "--count" && query_mode != "--locate") {
-            print_usage(argv[0]);
-            return 1;
+        // parse num_runs (optional)
+        uint64_t num_runs = 1;
+        if (i < argc && std::string(argv[i]) == "--num-runs") {
+            i++;
+            if (i >= argc) { print_usage(argv[0]); return 1; }
+            num_runs = std::stoull(argv[i++]);
         }
 
-        for (int i = arg_offset + 3; i < argc; i++) {
-            auto [pattern, pattern_len] = parse_pattern(argv[i]);
-            if (query_mode == "--count") {
+        // parse query: --count|--locate [--pattern-file <file> | <pattern>]
+        if (i >= argc) { print_usage(argv[0]); return 1; }
+        std::string mode = argv[i++];
+        if (mode != "--count" && mode != "--locate") { print_usage(argv[0]); return 1; }
+
+        std::vector<uint8_t> pattern;
+        uint64_t pattern_len;
+        std::string label;
+
+        if (i < argc && std::string(argv[i]) == "--pattern-file") {
+            i++;
+            if (i >= argc) { print_usage(argv[0]); return 1; }
+            label = argv[i++];
+            auto [p, pl] = read_input(label);
+            pattern = p; pattern_len = pl;
+        } else {
+            if (i >= argc) { print_usage(argv[0]); return 1; }
+            label = argv[i];
+            auto [p, pl] = parse_pattern(argv[i++]);
+            pattern = p; pattern_len = pl;
+        }
+
 #ifdef PERF
-                auto sq0 = take_snapshot();
-                uint64_t cnt = query_count(idx, pattern, pattern_len);
-                auto sq1 = take_snapshot();
-                std::cout << "perf count: cpu_ms=" << (sq1.cpu_ms - sq0.cpu_ms)
-                          << " mem_delta_kb=" << (sq1.peak_rss_kb - sq0.peak_rss_kb)
-                          << " pattern=" << argv[i] << " count=" << cnt << "\n";
-#else
-                uint64_t cnt = query_count(idx, pattern, pattern_len);
-                std::cout << "count=" << cnt << " pattern=" << argv[i] << "\n";
+        auto sq0 = take_snapshot();
 #endif
+        for (uint64_t r = 0; r < num_runs; r++) {
+            if (mode == "--count") {
+                uint64_t cnt = query_count(idx, pattern, pattern_len);
+                if (num_runs == 1)
+                    std::cout << "count=" << cnt << " pattern=" << label << "\n";
             } else {
-#ifdef PERF
-                auto sq0 = take_snapshot();
                 std::vector<uint64_t> positions = query_locate(idx, pattern, pattern_len);
-                auto sq1 = take_snapshot();
-                std::cout << "perf locate: cpu_ms=" << (sq1.cpu_ms - sq0.cpu_ms)
-                          << " mem_delta_kb=" << (sq1.peak_rss_kb - sq0.peak_rss_kb)
-                          << " pattern=" << argv[i] << " count=" << positions.size() << "\n";
-#else
-                std::vector<uint64_t> positions = query_locate(idx, pattern, pattern_len);
-                std::cout << "count=" << positions.size() << " positions=";
-                for (uint64_t p : positions) std::cout << p << " ";
-                std::cout << "pattern=" << argv[i] << "\n";
-#endif
+                if (num_runs == 1) {
+                    std::cout << "count=" << positions.size() << " positions=";
+                    for (uint64_t p : positions) std::cout << p << " ";
+                    std::cout << "pattern=" << label << "\n";
+                }
             }
         }
+#ifdef PERF
+        auto sq1 = take_snapshot();
+        std::cout << "perf queries: cpu_ms=" << (sq1.cpu_ms - sq0.cpu_ms)
+                  << " mem_delta_kb=" << (sq1.peak_rss_kb - sq0.peak_rss_kb)
+                  << " n_queries=" << num_runs << "\n";
+#endif
 
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << "\n";
