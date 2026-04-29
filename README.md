@@ -29,6 +29,20 @@ make
 - `--num-runs <n>` — repeat query n times (for benchmarking)
 - `--pattern-file <file>` — read pattern from a `.bin` file
 
+### For sdsl vs our implementation
+### Download datasets
+
+python3 experiments/pull_datasets.py
+
+#### custom benchmark
+make build/custom_benchmark
+build/custom_benchmark queries_50mb.txt experiments/results/build_custom_jacobson.csv experiments/results/count_custom_jacobson.csv experiments/results/locate_custom_jacobson.csv --jacobson
+
+#### sdsl benchmark
+make build/sdsl_benchmark
+build/sdsl_benchmark queries_50mb.txt experiments/results/build_sdsl.csv experiments/results/count_sdsl.csv experiments/results/locate_sdsl.csv
+
+
 ### Examples
 
 ```bash
