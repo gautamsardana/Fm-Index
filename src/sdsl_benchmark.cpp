@@ -83,16 +83,19 @@ vector<QuerySpec> read_query_file(const string &filepath) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    cerr << "Usage: " << argv[0] << " <query_file>\n";
-    cerr << "Example: " << argv[0] << " queries_50mb.txt\n";
+  if (argc != 5) {
+    cerr << "Usage: " << argv[0] << " <query_file> <build_out> <count_out> <locate_out>\n";
+    cerr << "Example: " << argv[0] << " queries_50mb.txt experiments/results/build_sdsl.csv experiments/results/count_sdsl.csv experiments/results/locate_sdsl.csv\n";
     cerr << "\nBenchmarks build time for 50MB english dataset\n";
     cerr << "Then runs COUNT and LOCATE queries on the index\n";
-    cerr << "Output: experiments/results/build_sdsl.csv, count_sdsl.csv, locate_sdsl.csv\n";
+    cerr << "Output files accept full or relative paths\n";
     return 1;
   }
 
   string query_file = argv[1];
+  string build_output = argv[2];
+  string count_output = argv[3];
+  string locate_output = argv[4];
   string input_file = "experiments/datasets/english_50MB";
 
   try {
@@ -123,15 +126,15 @@ int main(int argc, char *argv[]) {
     cerr << "  Peak RSS: " << mem_after << " KB\n";
 
     // Write build results
-    ofstream build_out("experiments/results/build_sdsl.csv");
+    ofstream build_out(build_output);
     if (!build_out) {
-      throw runtime_error("Cannot open build output file");
+      throw runtime_error("Cannot open build output file: " + build_output);
     }
     build_out << "input_size,build_time_ms,peak_memory_kb\n";
     build_out << "50MB," << build_time_ms << "," << mem_after << "\n";
     build_out.close();
 
-    cerr << "\nBuild results written to: experiments/results/build_sdsl.csv\n";
+    cerr << "\nBuild results written to: " << build_output << "\n";
 
     // ===== QUERY BENCHMARKING =====
     cerr << "\n=== SDSL Query Benchmarking ===\n";
@@ -147,11 +150,14 @@ int main(int argc, char *argv[]) {
 
     cerr << "Running queries grouped by size...\n";
 
-    ofstream count_out("experiments/results/count_sdsl.csv");
-    ofstream locate_out("experiments/results/locate_sdsl.csv");
+    ofstream count_out(count_output);
+    ofstream locate_out(locate_output);
 
-    if (!count_out || !locate_out) {
-      throw runtime_error("Cannot open output files in experiments/results/");
+    if (!count_out) {
+      throw runtime_error("Cannot open count output file: " + count_output);
+    }
+    if (!locate_out) {
+      throw runtime_error("Cannot open locate output file: " + locate_output);
     }
 
     count_out << "query_size,avg_time_us,avg_memory_kb\n";
@@ -226,8 +232,8 @@ int main(int argc, char *argv[]) {
     locate_out.close();
 
     cerr << "\nResults written to:\n";
-    cerr << "  experiments/results/count_sdsl.csv\n";
-    cerr << "  experiments/results/locate_sdsl.csv\n";
+    cerr << "  " << count_output << "\n";
+    cerr << "  " << locate_output << "\n";
 
   } catch (const exception &e) {
     cerr << "Error: " << e.what() << "\n";
