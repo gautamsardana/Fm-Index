@@ -78,30 +78,49 @@ static PerfSnapshot take_snapshot() {
 }
 #endif
 
-void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson = false) {
+void build_index(FmIndex &idx, const std::string &input_file, bool use_jacobson = false,
+                 bool use_sparse_sa = false, uint64_t sa_sampling_rate = 1) {
     auto [s, n_bits] = read_input(input_file);
     idx.n = n_bits + 1; // +1 for sentinel
     idx.use_jacobson = use_jacobson;
+    idx.use_sparse_sa = use_sparse_sa;
+    idx.sa_sampling_rate = sa_sampling_rate;
     build_suffix_array(idx, s);
     build_bwt(idx, s);
     build_rank(idx);
+    if (idx.use_sparse_sa)
+        sample_suffix_array(idx, idx.sa_sampling_rate);
     debug_print(idx);
 }
 
 void print_usage(const char *prog) {
     std::cerr << "Usage:\n"
-              << "  " << prog << " [--jacobson] --input <file>\n"
-              << "     [--count  --pattern-file <file>]\n"
-              << "     [--locate --pattern-file <file>]\n"
-              << "     ...\n";
+              << "  " << prog << " [--jacobson] [--ssa <k>] --input <file>\n"
+              << "     [--num-runs <n>] --count|--locate [--pattern-file <file> | <pattern>]\n"
+              << "     --extract <start> <end>\n";
 }
 
 int main(int argc, char *argv[]) {
     if (argc < 3) { print_usage(argv[0]); return 1; }
 
     bool use_jacobson = false;
+    bool use_sparse_sa = false;
+    uint64_t sa_sampling_rate = 1;
     int i = 1;
-    if (std::string(argv[i]) == "--jacobson") { use_jacobson = true; i++; }
+
+    while (i < argc && std::string(argv[i]).rfind("--", 0) == 0) {
+        std::string flag = argv[i];
+        if (flag == "--jacobson") {
+            use_jacobson = true; i++;
+        } else if (flag == "--ssa") {
+            if (i + 1 >= argc) { print_usage(argv[0]); return 1; }
+            use_sparse_sa = true;
+            sa_sampling_rate = std::stoull(argv[i + 1]);
+            i += 2;
+        } else {
+            break;
+        }
+    }
 
     if (i >= argc || std::string(argv[i]) != "--input") { print_usage(argv[0]); return 1; }
     std::string input_file = argv[++i];
@@ -112,12 +131,12 @@ int main(int argc, char *argv[]) {
 
 #ifdef PERF
         auto s0 = take_snapshot();
-        build_index(idx, input_file, use_jacobson);
+        build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
         auto s1 = take_snapshot();
         std::cout << "perf build: cpu_ms=" << (s1.cpu_ms - s0.cpu_ms)
                   << " peak_rss_kb=" << s1.peak_rss_kb << "\n";
 #else
-        build_index(idx, input_file, use_jacobson);
+        build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
 #endif
 
         if (i >= argc) {
@@ -125,7 +144,17 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
-        // parse num_runs (optional)
+        // --extract <start> <end>
+        if (std::string(argv[i]) == "--extract") {
+            if (i + 2 >= argc) { print_usage(argv[0]); return 1; }
+            uint64_t start = std::stoull(argv[i + 1]);
+            uint64_t end   = std::stoull(argv[i + 2]);
+            std::string extracted = extract_substring(idx, start, end);
+            std::cout << "extract=" << extracted << " start=" << start << " end=" << end << "\n";
+            return 0;
+        }
+
+        // --num-runs <n> (optional)
         uint64_t num_runs = 1;
         if (i < argc && std::string(argv[i]) == "--num-runs") {
             i++;
@@ -133,7 +162,7 @@ int main(int argc, char *argv[]) {
             num_runs = std::stoull(argv[i++]);
         }
 
-        // parse query: --count|--locate [--pattern-file <file> | <pattern>]
+        // --count|--locate [--pattern-file <file> | <pattern>]
         if (i >= argc) { print_usage(argv[0]); return 1; }
         std::string mode = argv[i++];
         if (mode != "--count" && mode != "--locate") { print_usage(argv[0]); return 1; }

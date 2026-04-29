@@ -1,5 +1,5 @@
-#include "fm_index.h"
 #include "jacobson_rank.h"
+#include "fm_index.h"
 #include <cmath>
 
 uint64_t get_bits(const std::vector<uint8_t> &v, uint64_t pos, uint64_t width) {
@@ -24,9 +24,9 @@ void build_rank(JacobsonRank &rank, const std::vector<uint8_t> &bwt,
   rank.bwt = bwt;
   rank.n = n;
 
-  uint64_t log_n = (uint64_t)std::ceil(std::log2(n));
-  rank.chunk_size = log_n * log_n; // (log2(n))^2
-  rank.sub_chunk_size = log_n / 2; // (log2(n))/2
+  uint64_t log_n = (n <= 1) ? 1 : (uint64_t)std::ceil(std::log2(n));
+  rank.chunk_size = log_n * log_n;                        // (log2(n))^2
+  rank.sub_chunk_size = (log_n / 2 == 0) ? 1 : log_n / 2; // (log2(n))/2, min 1
 
   uint64_t num_chunks = (n + rank.chunk_size - 1) / rank.chunk_size;
 
@@ -102,14 +102,23 @@ uint64_t get_rank(const JacobsonRank &rank, uint64_t offset) {
 
   uint64_t sub_chunks_per_chunk =
       (rank.chunk_size + rank.sub_chunk_size - 1) / rank.sub_chunk_size;
+
+  uint64_t sub_chunk_start =
+      chunk_start + which_sub_chunk * rank.sub_chunk_size;
+  if (sub_chunk_start >= rank.n) {
+    uint64_t remaining = 0;
+    for (uint64_t i = chunk_start; i < offset && i < rank.n; i++) {
+      remaining += get_bit(rank.bwt, i);
+    }
+    return cumulative + remaining;
+  }
+
   uint64_t sub_chunk_global_idx =
       which_chunk * sub_chunks_per_chunk + which_sub_chunk;
   uint64_t bit_pos = sub_chunk_global_idx * rank.bits_per_relative_rank;
   uint64_t relative =
       get_bits(rank.relative_ranks, bit_pos, rank.bits_per_relative_rank);
 
-  uint64_t sub_chunk_start =
-      chunk_start + which_sub_chunk * rank.sub_chunk_size;
   uint64_t num_remaining_bits = offset - sub_chunk_start;
 
   if (sub_chunk_start + num_remaining_bits > rank.n) {

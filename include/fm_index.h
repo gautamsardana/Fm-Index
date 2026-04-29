@@ -26,6 +26,8 @@ struct FmIndex {
 
     JacobsonRank jacobson_rank;          // Jacobson rank structure for O(1) rank with O(n/log n) space
     bool use_jacobson = false;           // Flag to control which rank method to use
+    bool use_sparse_sa = false;          // Whether suffix_array is stored as a sparse sample
+    uint64_t sa_sampling_rate = 1;       // Keep every k-th suffix array entry when sparse
 };
 
 // n = text length in bits, m = pattern length in bits, occ = number of occurrences
@@ -35,6 +37,9 @@ void build_suffix_array(FmIndex &idx, const std::vector<uint8_t> &s);
 
 // time: O(n)  space: O(n/8 bytes) — BWT stored bit-packed
 void build_bwt(FmIndex &idx, const std::vector<uint8_t> &s);
+
+// time: O(n/k)  space: O(n/k) — keep every k-th suffix array entry
+void sample_suffix_array(FmIndex &idx, uint64_t sampling_rate);
 
 // time: O(n)  space: O(8n bytes) — one uint64_t per position
 void build_rank(FmIndex &idx);
@@ -47,6 +52,9 @@ uint64_t query_count(const FmIndex &idx, const std::vector<uint8_t> &pattern, ui
 
 // time: O(m + occ)  space: O(8*occ bytes) — backward search + SA lookup per occurrence
 std::vector<uint64_t> query_locate(const FmIndex &idx, const std::vector<uint8_t> &pattern, uint64_t pattern_len);
+
+// time: O(n + len)  space: O(n) — extract substring [start, end) using SA; SSA uses LF with sampled SA
+std::string extract_substring(const FmIndex &idx, uint64_t start, uint64_t end);
 
 void store_index(const FmIndex &idx, const std::string &filepath);
 
