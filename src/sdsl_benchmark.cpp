@@ -9,38 +9,16 @@
 using namespace sdsl;
 using namespace std;
 
-// Read binary input file (similar to main.cpp)
+// Read any file as binary (treat all bytes as data, extract bits)
 pair<vector<uint8_t>, uint64_t> read_binary_input(const string &filepath) {
-    bool is_bin = filepath.size() >= 4 && filepath.substr(filepath.size() - 4) == ".bin";
+    ifstream f(filepath, ios::binary);
+    if (!f) throw runtime_error("Cannot open file: " + filepath);
 
-    if (is_bin) {
-        ifstream f(filepath, ios::binary);
-        if (!f) throw runtime_error("Cannot open file: " + filepath);
-        vector<uint8_t> packed(istreambuf_iterator<char>(f), {});
-        uint64_t n_bits = packed.size() * 8;
-        return {packed, n_bits};
-    } else {
-        ifstream f(filepath);
-        if (!f) throw runtime_error("Cannot open file: " + filepath);
-        vector<uint8_t> packed;
-        char c;
-        uint8_t byte = 0;
-        int bit_pos = 0;
-        uint64_t n_bits = 0;
-        while (f.get(c)) {
-            if (c != '0' && c != '1') continue;
-            byte = (byte << 1) | (c == '1' ? 1 : 0);
-            n_bits++;
-            if (++bit_pos == 8) {
-                packed.push_back(byte);
-                byte = 0;
-                bit_pos = 0;
-            }
-        }
-        if (bit_pos > 0)
-            packed.push_back(byte << (8 - bit_pos));
-        return {packed, n_bits};
-    }
+    // Read all bytes from file
+    vector<uint8_t> packed(istreambuf_iterator<char>(f), {});
+    uint64_t n_bits = packed.size() * 8;
+
+    return {packed, n_bits};
 }
 
 // Convert binary bit vector to alphabet string (0→'A', 1→'B')
