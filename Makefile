@@ -3,6 +3,7 @@ CXXFLAGS = -Wall -O2 -Iinclude -std=c++17
 BUILDDIR = build
 
 SRC = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/jacobson_rank.cpp src/fm_index.cpp src/main.cpp
+BENCH_SRC = src/suffix_array.cpp src/bwt.cpp src/rank.cpp src/jacobson_rank.cpp src/fm_index.cpp
 
 all: $(BUILDDIR)/fm_index
 
@@ -11,6 +12,9 @@ $(BUILDDIR)/fm_index: $(SRC) | $(BUILDDIR)
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
+
+$(BUILDDIR)/custom_benchmark: src/custom_benchmark.cpp $(BENCH_SRC) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 run_correctness_tests: | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -DDEBUG $(SRC) -o $(BUILDDIR)/fm_index

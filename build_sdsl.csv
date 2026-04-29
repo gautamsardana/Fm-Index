@@ -1,0 +1,4 @@
+input_size_mb,build_time_ms,peak_memory_kb
+1,2233,103284
+5,13840,647844
+10,30938,1266312
