@@ -99,6 +99,21 @@ int main(int argc, char *argv[]) {
   string input_file = "experiments/datasets/english_50MB";
 
   try {
+    // Open all output files first to fail fast
+    ofstream build_out(build_output);
+    ofstream count_out(count_output);
+    ofstream locate_out(locate_output);
+
+    if (!build_out) {
+      throw runtime_error("Cannot open build output file: " + build_output);
+    }
+    if (!count_out) {
+      throw runtime_error("Cannot open count output file: " + count_output);
+    }
+    if (!locate_out) {
+      throw runtime_error("Cannot open locate output file: " + locate_output);
+    }
+
     // ===== BUILD BENCHMARKING =====
     cerr << "=== SDSL Build Benchmarking ===\n";
     cerr << "Building 50MB english index...\n";
@@ -126,10 +141,6 @@ int main(int argc, char *argv[]) {
     cerr << "  Peak RSS: " << mem_after << " KB\n";
 
     // Write build results
-    ofstream build_out(build_output);
-    if (!build_out) {
-      throw runtime_error("Cannot open build output file: " + build_output);
-    }
     build_out << "input_size,build_time_ms,peak_memory_kb\n";
     build_out << "50MB," << build_time_ms << "," << mem_after << "\n";
     build_out.close();
@@ -149,16 +160,6 @@ int main(int argc, char *argv[]) {
     }
 
     cerr << "Running queries grouped by size...\n";
-
-    ofstream count_out(count_output);
-    ofstream locate_out(locate_output);
-
-    if (!count_out) {
-      throw runtime_error("Cannot open count output file: " + count_output);
-    }
-    if (!locate_out) {
-      throw runtime_error("Cannot open locate output file: " + locate_output);
-    }
 
     count_out << "query_size,avg_time_us,avg_memory_kb\n";
     locate_out << "query_size,avg_time_us,avg_memory_kb\n";
