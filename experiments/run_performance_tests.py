@@ -5,7 +5,6 @@ import sys
 import os
 import csv
 import tempfile
-import math
 
 BINARY = "./build/fm_index"
 N_RUNS = 3
@@ -51,13 +50,12 @@ def parse_perf_output(output):
     for line in output.splitlines():
         if line.startswith("perf build:"):
             for part in line.split():
-                if "cpu_ms=" in part:           build["cpu_ms"]           = float(part.split("=")[1])
-                if "peak_rss_kb=" in part:      build["peak_rss_kb"]      = int(part.split("=")[1])
-                if "post_build_rss_kb=" in part: build["post_build_rss_kb"] = int(part.split("=")[1])
+                if "cpu_ms=" in part:      build["cpu_ms"]      = float(part.split("=")[1])
+                if "peak_rss_kb=" in part: build["peak_rss_kb"] = int(part.split("=")[1])
+                if "index_bytes=" in part: build["index_bytes"] = int(part.split("=")[1])
         elif line.startswith("perf queries:"):
             for part in line.split():
-                if "cpu_ms=" in part:       all_queries["cpu_ms"]       = float(part.split("=")[1])
-                if "mem_total_kb=" in part: all_queries["mem_total_kb"] = int(part.split("=")[1])
+                if "cpu_ms=" in part: all_queries["cpu_ms"] = float(part.split("=")[1])
     return build, all_queries
 
 def run_build_and_query(fname, pattern, mode="locate", num_runs=1):
@@ -85,14 +83,14 @@ def write_csv(filepath, rows, fieldnames):
         writer.writerows(rows)
 
 print(f"=== Build scaling [{LABEL}] ===")
-print(f"{'n (bits)':<14} {'cpu (ms)':<18} {'peak mem (KB)':<18} {'post-build (KB)'}")
+print(f"{'n (bits)':<14} {'cpu (ms)':<18} {'peak mem (KB)':<18} {'index (KB)'}")
 print("-" * 70)
 
 build_sizes = [10**2, 10**3, 10**4, 10**5, 10**6, 10**7]
 build_rows  = []
 
 for n in build_sizes:
-    cpu_list, peak_list, post_list = [], [], []
+    cpu_list, peak_list, index_list = [], [], []
     for _ in range(N_RUNS):
         text  = generate_input(n)
         fname = write_txt(text)
@@ -101,17 +99,17 @@ for n in build_sizes:
             if build:
                 cpu_list.append(build.get("cpu_ms", 0))
                 peak_list.append(build.get("peak_rss_kb", 0))
-                post_list.append(build.get("post_build_rss_kb", 0))
+                index_list.append(build.get("index_bytes", 0) / 1024)
         finally:
             os.unlink(fname)
-    cpu  = avg(cpu_list)
-    peak = avg(peak_list)
-    post = avg(post_list)
-    build_rows.append({"n": n, "cpu_ms": round(cpu, 4), "peak_kb": int(peak), "post_build_kb": int(post)})
-    print(f"{n:<14} {cpu:<18.2f} {int(peak):<18} {int(post)}")
+    cpu   = avg(cpu_list)
+    peak  = avg(peak_list)
+    index = avg(index_list)
+    build_rows.append({"n": n, "cpu_ms": round(cpu, 4), "peak_kb": int(peak), "index_kb": int(index)})
+    print(f"{n:<14} {cpu:<18.2f} {int(peak):<18} {int(index)}")
 
 write_csv(f"experiments/results/build_scaling_{LABEL}.csv", build_rows,
-          ["n", "cpu_ms", "peak_kb", "post_build_kb"])
+          ["n", "cpu_ms", "peak_kb", "index_kb"])
 
 
 N_QUERIES   = 100
@@ -124,7 +122,7 @@ def get_index_mem_kb(label, n):
     with open(path) as f:
         for row in csv.DictReader(f):
             if int(row["n"]) == n:
-                return int(row["post_build_kb"])
+                return int(row["index_kb"])
     return 0
 
 index_mem_kb = get_index_mem_kb(LABEL, QUERY_INPUT)

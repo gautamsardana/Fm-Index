@@ -6,8 +6,8 @@
 
 struct JacobsonRank {
   const std::vector<uint8_t> *bwt = nullptr; // pointer to BWT — no copy
-  std::vector<uint64_t> chunk_rank;          // cumulative rank at each chunk
-  std::vector<uint8_t> relative_ranks;       // relative rank for each sub-chunk
+  std::vector<uint32_t> chunk_rank;          // cumulative rank at each chunk; uint32_t sufficient for n ≤ 4B
+  std::vector<uint8_t> relative_ranks;       // relative rank for each sub-chunk, bit-packed
   uint64_t n = 0;
   uint64_t chunk_size = 0;           // (log2(n))^2
   uint64_t sub_chunk_size = 0;       // (log2(n))/2

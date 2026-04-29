@@ -65,41 +65,33 @@ std::pair<std::vector<uint8_t>, uint64_t> parse_pattern(const std::string &s) {
 #ifdef PERF
 #ifdef __APPLE__
 #include <mach/mach.h>
-#include <malloc/malloc.h>
-#else
-#include <malloc.h>
 #endif
 
-struct PerfSnapshot {
-    double cpu_ms;
-    long   peak_rss_kb;
-    long   current_rss_kb;
-};
+static double get_cpu_ms() {
+    struct rusage r;
+    getrusage(RUSAGE_SELF, &r);
+    return (r.ru_utime.tv_sec + r.ru_stime.tv_sec) * 1000.0
+         + (r.ru_utime.tv_usec + r.ru_stime.tv_usec) / 1000.0;
+}
 
-static long get_current_rss_kb() {
+static long get_peak_rss_kb() {
+    struct rusage r;
+    getrusage(RUSAGE_SELF, &r);
 #ifdef __APPLE__
-    // flush allocator's free list back to OS before measuring
-    malloc_zone_pressure_relief(nullptr, 0);
-    malloc_statistics_t stats;
-    malloc_zone_statistics(nullptr, &stats);
-    return (long)(stats.size_in_use / 1024);
+    return r.ru_maxrss / 1024;
 #else
-    struct mallinfo2 mi = mallinfo2();
-    return (long)(mi.uordblks / 1024);
+    return r.ru_maxrss;
 #endif
 }
 
-static PerfSnapshot take_snapshot() {
-    struct rusage r;
-    getrusage(RUSAGE_SELF, &r);
-    double cpu_ms = (r.ru_utime.tv_sec + r.ru_stime.tv_sec) * 1000.0
-                  + (r.ru_utime.tv_usec + r.ru_stime.tv_usec) / 1000.0;
-#ifdef __APPLE__
-    long peak_kb = r.ru_maxrss / 1024;
-#else
-    long peak_kb = r.ru_maxrss;
-#endif
-    return {cpu_ms, peak_kb, get_current_rss_kb()};
+static uint64_t index_size_bytes(const FmIndex &idx) {
+    uint64_t total = 0;
+    total += idx.bwt.capacity();
+    total += idx.suffix_array.capacity()                 * sizeof(uint64_t);
+    total += idx.rank_table.capacity()                   * sizeof(uint64_t);
+    total += idx.jacobson_rank.chunk_rank.capacity()     * sizeof(uint32_t);
+    total += idx.jacobson_rank.relative_ranks.capacity() * sizeof(uint8_t);
+    return total;
 }
 #endif
 
@@ -155,12 +147,11 @@ int main(int argc, char *argv[]) {
         FmIndex idx;
 
 #ifdef PERF
-        auto s0 = take_snapshot();
+        double cpu0 = get_cpu_ms();
         build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
-        auto s1 = take_snapshot();
-        std::cout << "perf build: cpu_ms=" << (s1.cpu_ms - s0.cpu_ms)
-                  << " peak_rss_kb=" << s1.peak_rss_kb
-                  << " post_build_rss_kb=" << s1.current_rss_kb << "\n";
+        std::cout << "perf build: cpu_ms=" << (get_cpu_ms() - cpu0)
+                  << " peak_rss_kb=" << get_peak_rss_kb()
+                  << " index_bytes=" << index_size_bytes(idx) << "\n";
 #else
         build_index(idx, input_file, use_jacobson, use_sparse_sa, sa_sampling_rate);
 #endif
@@ -211,7 +202,7 @@ int main(int argc, char *argv[]) {
         }
 
 #ifdef PERF
-        auto sq0 = take_snapshot();
+        double qcpu0 = get_cpu_ms();
 #endif
         for (uint64_t r = 0; r < num_runs; r++) {
             if (mode == "--count") {
@@ -228,9 +219,7 @@ int main(int argc, char *argv[]) {
             }
         }
 #ifdef PERF
-        auto sq1 = take_snapshot();
-        std::cout << "perf queries: cpu_ms=" << (sq1.cpu_ms - sq0.cpu_ms)
-                  << " mem_total_kb=" << sq1.current_rss_kb
+        std::cout << "perf queries: cpu_ms=" << (get_cpu_ms() - qcpu0)
                   << " n_queries=" << num_runs << "\n";
 #endif
 

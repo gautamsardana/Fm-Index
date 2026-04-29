@@ -29,18 +29,36 @@ make
 - `--num-runs <n>` — repeat query n times (for benchmarking)
 - `--pattern-file <file>` — read pattern from a `.bin` file
 
-### For sdsl vs our implementation
-### Download datasets
+### SDSL comparison
 
+Download datasets and generate queries first:
+
+```bash
 python3 experiments/pull_datasets.py
+python3 experiments/generate_queries.py 50 --output queries_50mb.txt
+```
 
-#### custom benchmark
+Build and run:
+
+```bash
 make build/custom_benchmark
-build/custom_benchmark queries_50mb.txt experiments/results/build_custom_jacobson.csv experiments/results/count_custom_jacobson.csv experiments/results/locate_custom_jacobson.csv --jacobson
-
-#### sdsl benchmark
 make build/sdsl_benchmark
-build/sdsl_benchmark queries_50mb.txt experiments/results/build_sdsl.csv experiments/results/count_sdsl.csv experiments/results/locate_sdsl.csv
+
+# our implementation: jacobson + ssa32
+build/custom_benchmark experiments/datasets/english_50MB queries_50mb.txt \
+    experiments/results/build_custom.csv \
+    experiments/results/count_custom.csv \
+    experiments/results/locate_custom.csv \
+    --jacobson --ssa 32
+
+# sdsl
+build/sdsl_benchmark experiments/datasets/english_50MB queries_50mb.txt \
+    experiments/results/build_sdsl.csv \
+    experiments/results/count_sdsl.csv \
+    experiments/results/locate_sdsl.csv
+```
+
+CSV columns: `input_size_mb, build_time_ms, peak_memory_kb, index_size_kb` (build) and `input_size_mb, query_size_bits, avg_time_us, avg_result_count` (queries).
 
 
 ### Examples
