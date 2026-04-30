@@ -15,7 +15,7 @@ void build_bwt(FmIndex &idx, const std::vector<uint8_t> &s) {
     for (uint64_t i = 0; i < n; i++) {
         uint64_t pos = idx.suffix_array[i];
         if (pos == 0) {
-            // wrap: previous char is sentinel
+            // wrap - previous char is sentinel
             set_bit(idx.bwt, i, 0);
             idx.sentinel_row = i;
         } else {
